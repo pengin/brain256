@@ -1,0 +1,110 @@
+#!/bin/sh /etc/rc.common
+# p3(データパーティション)を実カード容量まで初回ブートで拡張する。
+# fdisk/sfdisk は使わない: p3 は末尾のパーティションなので、MBR のセクタ数
+# フィールド(オフセット490、4バイト、リトルエンディアン)だけを直接
+# 書き換えれば足りる。resize2fs は usr/share/brainwrt-data-grow/ に同梱した
+# e2fsprogs 一式をオフラインで opkg install して用意する(その ipk を集めるのが
+# scripts/fetch_data_grow_ipks.sh)。
+#
+# brainwrt-data(mount, START=10)より前に完了させる必要がある。
+START=9
+
+DISK_DEV="${DISK_DEV:-/dev/mmcblk1}"
+P3_DEV="${P3_DEV:-/dev/mmcblk1p3}"
+DISK_SIZE_FILE="${DISK_SIZE_FILE:-/sys/block/mmcblk1/size}"
+P3_SIZE_FILE="${P3_SIZE_FILE:-/sys/block/mmcblk1/mmcblk1p3/size}"
+P3_START_FILE="${P3_START_FILE:-/sys/block/mmcblk1/mmcblk1p3/start}"
+STATE_FILE="${STATE_FILE:-/etc/brainwrt-data-grow.state}"
+IPK_DIR="${IPK_DIR:-/usr/share/brainwrt-data-grow}"
+LOG_FILE="${LOG_FILE:-/tmp/brainwrt-data-grow.log}"
+REBOOT_DELAY="${REBOOT_DELAY:-2}"
+# MBR の p3 エントリ(オフセット478、dos disklabel の3番目のエントリ)中、
+# セクタ数フィールドの絶対バイトオフセット。
+MBR_SECTORS_OFFSET="${MBR_SECTORS_OFFSET:-490}"
+
+log() { logger -t brainwrt-data-grow "$1"; }
+
+get_state() { cat "$STATE_FILE" 2>/dev/null || true; }
+set_state() { printf '%s\n' "$1" > "$STATE_FILE"; }
+
+dev_present() {
+    [ -b "$P3_DEV" ] && return 0
+    [ "${BRAINWRT_DATA_FORCE:-0}" = 1 ] && [ -e "$P3_DEV" ] && return 0
+    return 1
+}
+
+ensure_resize2fs() {
+    command -v resize2fs >/dev/null 2>&1 && return 0
+    opkg install "$IPK_DIR"/*.ipk >>"$LOG_FILE" 2>&1 || return 1
+    command -v resize2fs >/dev/null 2>&1
+}
+
+patch_mbr() {
+    sectors="$1"
+    tmp="/tmp/brainwrt-data-grow.mbr.$$"
+    b0=$((sectors & 255))
+    b1=$((sectors >> 8 & 255))
+    b2=$((sectors >> 16 & 255))
+    b3=$((sectors >> 24 & 255))
+    # printf の %o は引数を10進→8進の「テキスト」に変換するだけなので、
+    # `\%03o` は「バックスラッシュ + 数字3桁」という文字列(例: \004)を作る
+    # 段階(esc, command substitution。中身は印字可能文字だけなので安全)。
+    # それを別の printf の「フォーマット文字列」として渡すと、printf 自身が
+    # \NNN エスケープをバイナリ1バイトへ解釈しながらファイルへ直接書き出す
+    # (command substitution を経由しないので、途中にNUL(\000)バイトが
+    # あっても切り詰められない)。
+    esc=$(printf '\\%03o\\%03o\\%03o\\%03o' "$b0" "$b1" "$b2" "$b3")
+    printf "$esc" > "$tmp"
+    dd if="$tmp" of="$DISK_DEV" bs=1 seek="$MBR_SECTORS_OFFSET" count=4 conv=notrunc 2>>"$LOG_FILE"
+    rc=$?
+    rm -f "$tmp"
+    return $rc
+}
+
+boot() {
+    case "$(get_state)" in
+        done|failed) return 0 ;;
+    esac
+
+    dev_present || { set_state done; return 0; }
+
+    total=$(cat "$DISK_SIZE_FILE" 2>/dev/null || echo 0)
+    start=$(cat "$P3_START_FILE" 2>/dev/null || echo 0)
+    cur=$(cat "$P3_SIZE_FILE" 2>/dev/null || echo 0)
+    target=$((total - start))
+
+    if [ "$(get_state)" = "patched" ]; then
+        if [ "$cur" -ge "$target" ]; then
+            if ensure_resize2fs; then
+                if resize2fs "$P3_DEV" >>"$LOG_FILE" 2>&1; then
+                    set_state done
+                    log "resize2fs OK, p3 grown to ${cur} sectors"
+                else
+                    set_state failed
+                    log "resize2fs failed, giving up"
+                fi
+            else
+                set_state failed
+                log "resize2fs unavailable (opkg install failed), giving up"
+            fi
+        else
+            set_state failed
+            log "kernel did not pick up patched partition size, giving up"
+        fi
+        return 0
+    fi
+
+    if [ "$cur" -ge "$target" ]; then
+        set_state done
+        return 0
+    fi
+
+    if patch_mbr "$target"; then
+        set_state patched
+        log "MBR patched (p3 -> ${target} sectors), rebooting"
+        ( sleep "$REBOOT_DELAY"; reboot ) &
+    else
+        set_state failed
+        log "MBR patch failed, giving up"
+    fi
+}

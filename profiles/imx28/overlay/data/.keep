@@ -1,0 +1,2 @@
+# /data mountpoint. p3(データパーティション)がここにマウントされる。
+# brainwrt-ct のバンドルは /data/apps/<name>/ に置かれる。

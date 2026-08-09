@@ -1,0 +1,36 @@
+#!/bin/sh /etc/rc.common
+# p3(データパーティション)を /data へマウントする。rootfs 再フラッシュでも
+# brainwrt-ct のバンドル/データ(/data/apps/<name>/)が残るようにするため、
+# rootfs(p2)とは別パーティションに置く。p3 が無い旧イメージ(2パーティション
+# 構成でまだ焼き直していないカード)では何もせず、/data は従来通り rootfs 上
+# のディレクトリのまま動く(非破壊)。
+#
+# START=95 の brainwrt-ct より前に /data を用意する必要がある。
+START=10
+
+DATA_DEV="${DATA_DEV:-/dev/mmcblk1p3}"
+DATA_MNT="${DATA_MNT:-/data}"
+MOUNTS_FILE="${MOUNTS_FILE:-/proc/mounts}"
+
+# 実機は /dev/mmcblk1p3 のようなブロックデバイスのみを対象にする。テストでは
+# 実ブロックデバイスを用意できないため、BRAINWRT_DATA_FORCE=1 のときだけ
+# 通常ファイルも「デバイスあり」として扱えるようにする(テスト専用の抜け道)。
+dev_present() {
+    [ -b "$DATA_DEV" ] && return 0
+    [ "${BRAINWRT_DATA_FORCE:-0}" = 1 ] && [ -e "$DATA_DEV" ] && return 0
+    return 1
+}
+
+boot() {
+    dev_present || {
+        logger -t brainwrt-data "$DATA_DEV not found, skip (old image?)"
+        return 0
+    }
+    grep -q " $DATA_MNT " "$MOUNTS_FILE" 2>/dev/null && return 0
+    out=$(mount -t ext4 "$DATA_DEV" "$DATA_MNT" 2>&1)
+    if [ $? -eq 0 ]; then
+        logger -t brainwrt-data "mounted $DATA_DEV -> $DATA_MNT"
+    else
+        logger -t brainwrt-data "mount $DATA_DEV failed: $out"
+    fi
+}
