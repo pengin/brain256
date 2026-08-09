@@ -1,0 +1,27 @@
+# ドナーイメージ経由で Brain 向けの OpenWrt rootfs tarball を組む。
+# ImageBuilder 版(make docker-rootfs-ib)は Docker in Docker が要るので
+# ここでは回していない。
+name: rootfs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rootfs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build builder image
+        run: make docker-build
+
+      - name: Fetch donor OpenWrt image
+        run: make fetch
+
+      - name: Build rootfs tarball
+        run: make docker-rootfs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rootfs-imx28
+          path: output/rootfs-imx28.tar
