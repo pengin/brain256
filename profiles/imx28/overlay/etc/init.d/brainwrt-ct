@@ -1,0 +1,25 @@
+#!/bin/sh /etc/rc.common
+# 起動時に autostart="1" のバンドルを up する。
+START=95
+STOP=10
+
+APPS="${APPS:-/data/apps}"
+BRAINWRT_CT="${BRAINWRT_CT:-/usr/sbin/brainwrt-ct}"
+
+ct_autostart_all() {
+  for d in "$APPS"/*/; do
+    [ -f "$d/manifest.conf" ] || continue
+    autostart="0"; . "$d/manifest.conf"
+    [ "$autostart" = "1" ] || continue
+    $BRAINWRT_CT up "$(basename "$d")"
+  done
+}
+
+start() { ct_autostart_all; }
+
+stop() {
+  for d in "$APPS"/*/; do
+    [ -d "$d" ] || continue
+    "$BRAINWRT_CT" down "$(basename "$d")" 2>/dev/null || true
+  done
+}
