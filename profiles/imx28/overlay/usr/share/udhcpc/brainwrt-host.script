@@ -1,0 +1,25 @@
+#!/bin/sh
+# udhcpc script for the manual USB host-mode network path
+# (brainwrt-usb-mode host). There's no netifd proto bound to ethX/
+# wlan0 and dnsmasq is stripped from this build, so the stock
+# /usr/share/udhcpc/default.script (interface address/routes only)
+# never gets DHCP-provided DNS servers into /etc/resolv.conf. Wrap
+# it and add that.
+[ -z "$1" ] && echo "Error: should be run by udhcpc" && exit 1
+
+/usr/share/udhcpc/default.script "$1"
+
+case "$1" in
+bound|renew)
+	{
+		for ns in $dns; do
+			echo "nameserver $ns"
+		done
+	} > /etc/resolv.conf
+	;;
+deconfig)
+	: > /etc/resolv.conf
+	;;
+esac
+
+exit 0

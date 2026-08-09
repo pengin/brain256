@@ -1,0 +1,48 @@
+#!/bin/sh
+# Connect wlan0 (USB WiFi dongle, e.g. GW-USEco300/RTL8192CU) to a
+# WPA2-PSK access point. SSID/PSK are passed as arguments and only ever
+# written to a runtime-only config under /var/run -- they are never
+# baked into the image/overlay.
+#
+# wlan0 only exists once usb0 is in host role (see brainwrt-usb-mode
+# host) and the dongle has enumerated behind the hub.
+set -e
+
+usage() {
+	echo "usage: $0 <ssid> <psk>" >&2
+	exit 1
+}
+
+[ $# -eq 2 ] || usage
+SSID="$1"
+PSK="$2"
+IFACE=wlan0
+
+[ -d "/sys/class/net/$IFACE" ] || { echo "no $IFACE (dongle not enumerated? run brainwrt-usb-mode host first)" >&2; exit 1; }
+
+ip link set "$IFACE" up
+
+CONF="/var/run/wpa_supplicant-$IFACE.conf"
+cat > "$CONF" <<EOF
+ctrl_interface=/var/run/wpa_supplicant
+network={
+	ssid="$SSID"
+	psk="$PSK"
+}
+EOF
+chmod 600 "$CONF"
+
+killall wpa_supplicant 2>/dev/null || true
+sleep 1
+wpa_supplicant -B -i "$IFACE" -c "$CONF"
+
+# Wait for association before DHCP, same reasoning as the eth-appears
+# check in brainwrt-usb-mode: don't fire udhcpc at a link that isn't up.
+i=0
+while [ $i -lt 15 ]; do
+	iw dev "$IFACE" link 2>/dev/null | grep -q "^Connected to" && break
+	sleep 1
+	i=$((i + 1))
+done
+
+udhcpc -i "$IFACE" -n -q -s /usr/share/udhcpc/brainwrt-host.script || echo "udhcpc on $IFACE failed" >&2
