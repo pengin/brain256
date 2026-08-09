@@ -1,0 +1,25 @@
+cache/
+output/
+work/
+*.img
+
+# subagent-driven-development の進捗レジャー(scratch)。git clean -fdx で消える前提。
+.superpowers/
+
+# bundles/webcam/root: ImageBuilder の opkg が生成するツリー
+# (scripts/build_bundle.sh / scripts/ct.sh build)。手書きなのは
+# usr/bin/webcam-run と srv/www/index.html と manifest.conf だけ。
+# usr/bin を一括で無視して webcam-run だけ明示的に戻しているのは、
+# opkg が要求したパッケージ以外のバイナリ(依存解決の bootstrap で入る
+# libc パッケージの ldd ラッパーなど)も同じ場所に置くため。
+# usr/lib, usr/sbin, usr/share, lib は opkg / ビルド専用のツリーで
+# 手書きファイルは無い。
+bundles/*/root/usr/bin/*
+!bundles/*/root/usr/bin/webcam-run
+bundles/*/root/usr/lib/
+bundles/*/root/usr/sbin/
+bundles/*/root/usr/share/
+bundles/*/root/lib/
+# opkg が入れる設定/初期化ツリー(例: uhttpd の /etc/config, /etc/init.d)。
+# ct.sh build が Dockerfile から再生成する生成物。
+bundles/*/root/etc/
