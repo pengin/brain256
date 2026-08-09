@@ -56,8 +56,24 @@ docker-rootfs-ib: docker-volume-rm docker-volume-create docker-loop-clean
 # build_image.sh expects a rootfs directory, then let it assemble the SD
 # image (per-model U-Boot, nk.bin, partitioning) exactly like Brainux.
 # The kernel comes from linux-brain in the buildbrain tree — see 3.2.
+# SD イメージは output/rootfs-$(PROFILE).tar を焼き込む。overlay を直したのに
+# rootfs を組み直さないまま docker-image を回すと、古い rootfs のイメージが
+# 黙って出来上がる(実際にやった)。profiles/ のほうが新しければ止める。
+.PHONY: check-rootfs-fresh
+check-rootfs-fresh:
+	@test -f output/rootfs-$(PROFILE).tar || { \
+		echo "error: output/rootfs-$(PROFILE).tar がありません -- 先に 'make docker-rootfs-ib'" >&2; \
+		exit 1; }
+	@stale=$$(find profiles/$(PROFILE) -type f -newer output/rootfs-$(PROFILE).tar -print -quit); \
+	if [ -n "$$stale" ]; then \
+		echo "error: output/rootfs-$(PROFILE).tar より profiles/$(PROFILE) のほうが新しい" >&2; \
+		echo "       (例: $$stale)" >&2; \
+		echo "       overlay の変更が反映されていません -- 先に 'make docker-rootfs-ib'" >&2; \
+		exit 1; \
+	fi
+
 .PHONY: docker-image
-docker-image: docker-loop-clean
+docker-image: check-rootfs-fresh docker-loop-clean
 	docker run --rm --platform linux/amd64 --privileged \
 		-e BRAIN_MODELS="$(BRAIN_MODELS)" \
 		-v "$$PWD/output":/brainwrt-output \

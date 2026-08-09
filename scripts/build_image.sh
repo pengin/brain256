@@ -140,8 +140,10 @@ done
 sudo mkdir -p ${WORK}/p1/nk
 sudo cp ${WORK}/*.bin ${WORK}/p1/nk/
 
-# Bundle any staged .ipk files so the on-device m0test script can
-# install them without a network (see profiles/*/overlay/usr/bin/m0test).
+# Bundle any staged .ipk files onto the boot partition so they can be
+# installed on-device without a network (the Brain has no Ethernet or
+# WiFi of its own). Drop them in output/ipk/ before running; skipped
+# when that directory is empty or absent.
 IPK_DIR=${IPK_DIR:-/brainwrt-output/ipk}
 if ls ${IPK_DIR}/*.ipk >/dev/null 2>&1; then
     sudo cp ${IPK_DIR}/*.ipk ${WORK}/p1/
