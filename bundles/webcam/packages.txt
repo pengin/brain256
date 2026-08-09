@@ -1,0 +1,4 @@
+# webcam バンドルに焼く追加パッケージ(ベースには入れない)
+fswebcam
+# 静的ファイルサーバ: ベースには busybox httpd applet が無いため uhttpd を使う
+uhttpd

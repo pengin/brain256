@@ -1,0 +1,30 @@
+#!/bin/sh
+# 監視カメラ: N秒毎に撮影して latest.jpg を atomic 更新し、httpd で配信。
+set -eu
+WWW="${WEBCAM_WWW:-/srv/www}"
+DEV="${WEBCAM_DEV:-/dev/video0}"
+INTERVAL="${WEBCAM_INTERVAL:-5}"
+FSWEBCAM="${WEBCAM_FSWEBCAM:-/usr/bin/fswebcam}"
+PORT="${WEBCAM_PORT:-8080}"
+
+mkdir -p "$WWW"
+
+capture_once() {
+  tmp="$WWW/.latest.$$.tmp"
+  "$FSWEBCAM" -d "$DEV" -r 320x240 --no-banner "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+  mv "$tmp" "$WWW/latest.jpg" || { rm -f "$tmp"; return 1; }   # atomic; 失敗時は tmp を残さない
+}
+
+capture_loop() {
+  while :; do capture_once || true; [ "${WEBCAM_ONESHOT:-0}" = 1 ] && break; sleep "$INTERVAL"; done
+}
+
+if [ "${WEBCAM_ONESHOT:-0}" = 1 ]; then
+  capture_loop
+  exit 0
+fi
+
+# 撮影ループを背後で、uhttpd を前景(=コンテナ main pid)で
+# (ベースに busybox httpd applet が無いため uhttpd を使う。-h は静的ファイル配信の docroot)
+capture_loop &
+exec uhttpd -f -p "0.0.0.0:$PORT" -h "$WWW"
