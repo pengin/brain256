@@ -1,0 +1,16 @@
+[Unit]
+Description=brain-registry (brainwrt-ct bundle registry)
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/brain-registryd
+Environment=DATA_DIR=/var/lib/brain-registry
+Environment=LISTEN_ADDR=:8080
+# Set PUSH_TOKEN via an EnvironmentFile instead of inlining a secret here:
+EnvironmentFile=/etc/brain-registry/push-token.env
+Restart=on-failure
+DynamicUser=yes
+StateDirectory=brain-registry
+
+[Install]
+WantedBy=multi-user.target
