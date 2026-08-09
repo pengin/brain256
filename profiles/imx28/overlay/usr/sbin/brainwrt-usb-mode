@@ -1,0 +1,54 @@
+#!/bin/sh
+# Switch usb0 between host role (hub + peripherals on the OTG port)
+# and device role (NCM ethernet gadget, SSH to 192.168.28.2). i.MX28
+# has no ID-pin hardware autodetect (see imx28-pwsh3.dts &usb0), so
+# the role has to be set explicitly here via the usb-role-switch
+# class instead of just plugging in an OTG adapter.
+set -e
+
+usage() {
+	echo "usage: $0 host|device" >&2
+	exit 1
+}
+
+[ $# -eq 1 ] || usage
+
+SW=$(ls /sys/class/usb_role 2>/dev/null | head -n1)
+[ -n "$SW" ] || { echo "no usb_role_switch device (check usb-role-switch in DT / CONFIG_USB_ROLE_SWITCH)" >&2; exit 1; }
+
+case "$1" in
+host)
+	echo host > "/sys/class/usb_role/$SW/role"
+	# Wait for a USB-Ethernet dongle behind the hub to enumerate and
+	# bind (cdc_ncm/r8152/asix all register as ethX), then DHCP it --
+	# this is the network path once usb0 leaves device role.
+	IFACE=""
+	i=0
+	while [ $i -lt 10 ]; do
+		IFACE=$(cd /sys/class/net 2>/dev/null && ls -d eth* 2>/dev/null | head -n1)
+		[ -n "$IFACE" ] && break
+		sleep 1
+		i=$((i + 1))
+	done
+	if [ -n "$IFACE" ]; then
+		ip link set "$IFACE" up
+		udhcpc -i "$IFACE" -n -q -s /usr/share/udhcpc/brainwrt-host.script || echo "udhcpc on $IFACE failed" >&2
+	else
+		echo "no ethX appeared after 10s (nothing plugged into the hub, or unsupported adapter)" >&2
+	fi
+	;;
+device)
+	echo device > "/sys/class/usb_role/$SW/role"
+	sleep 1
+	UDC=$(ls /sys/class/udc 2>/dev/null | head -n1)
+	G=/sys/kernel/config/usb_gadget/brainwrt
+	if [ -n "$UDC" ] && [ -d "$G" ]; then
+		echo "$UDC" > "$G/UDC" 2>/dev/null || true
+	fi
+	;;
+*)
+	usage
+	;;
+esac
+
+cat "/sys/class/usb_role/$SW/role"

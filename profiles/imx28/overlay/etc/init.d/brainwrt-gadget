@@ -1,0 +1,33 @@
+#!/bin/sh /etc/rc.common
+# Bring up a USB NCM ethernet gadget via configfs. The Brain's i.MX28
+# OTG port then shows up as a network interface on the connected PC
+# (NCM is driverless on macOS; static IPs, no DHCP on purpose since
+# dnsmasq is stripped from this build). SSH: root@192.168.28.2.
+START=15
+
+boot() {
+    grep -q configfs /proc/filesystems || {
+        logger -t gadget "configfs not available"; return 0; }
+    grep -q ' /sys/kernel/config ' /proc/mounts || \
+        mount -t configfs none /sys/kernel/config
+
+    UDC=$(ls /sys/class/udc 2>/dev/null | head -n1)
+    [ -n "$UDC" ] || { logger -t gadget "no UDC found"; return 0; }
+
+    G=/sys/kernel/config/usb_gadget/brainwrt
+    [ -d "$G" ] && return 0
+
+    mkdir -p $G
+    echo 0x1d6b > $G/idVendor
+    echo 0x0104 > $G/idProduct
+    mkdir -p $G/strings/0x409
+    echo brain-hackers > $G/strings/0x409/manufacturer
+    echo brainwrt > $G/strings/0x409/product
+    echo 0001 > $G/strings/0x409/serialnumber
+    mkdir -p $G/configs/c.1/strings/0x409
+    echo ncm > $G/configs/c.1/strings/0x409/configuration
+    mkdir -p $G/functions/ncm.usb0
+    ln -s $G/functions/ncm.usb0 $G/configs/c.1/
+    echo "$UDC" > $G/UDC
+    logger -t gadget "NCM gadget bound to $UDC"
+}
