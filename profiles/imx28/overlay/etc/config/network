@@ -1,0 +1,13 @@
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	option ipaddr '127.0.0.1'
+	option netmask '255.0.0.0'
+
+# USB gadget ether (see /etc/init.d/brainwrt-gadget). Configure the PC
+# side manually with 192.168.28.1/24, then: ssh root@192.168.28.2
+config interface 'usb'
+	option device 'usb0'
+	option proto 'static'
+	option ipaddr '192.168.28.2'
+	option netmask '255.255.255.0'

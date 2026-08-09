@@ -1,0 +1,58 @@
+# Package selection for the ImageBuilder rootfs (one entry per line,
+# '#' comments). Plain names are added; '-name' removes a package from
+# the profile's defaults. Passed to ImageBuilder's PACKAGES=.
+
+# The Brain is not a router: drop the routing/firewall stack that
+# OpenWrt includes by default.
+-dnsmasq
+-odhcpd-ipv6only
+-firewall4
+-nftables
+-kmod-nft-offload
+-ppp
+-ppp-mod-pppoe
+
+# Keep dropbear for M1 USB-gadget-ether SSH access.
+
+# Timezone data (also doubles as the proven offline-opkg test case).
+zoneinfo-core
+zoneinfo-asia
+
+# Touchscreen (SX8650 on i2c0@0x48) validation: evtest reads the input
+# device (/dev/input/eventN) and prints ABS_X/ABS_Y/BTN_TOUCH, so the
+# panel can be verified from the CUI without a GUI. i2c-tools (i2cdetect)
+# scans the bus to confirm which chips actually ACK -- the sx8650 node is
+# unvalidated (disabled even in linux-brain), and probe hit "reset
+# failed", so we first need to see whether 0x48 is really populated.
+evtest
+i2c-tools
+
+# USB host-mode diagnostics: lsusb to confirm a hub (and whatever's
+# plugged into it) actually enumerates on usb0 in OTG host mode.
+usbutils
+
+# WLAN client (GW-USEco300, Realtek RTL8192CU -> RTL8XXXU kernel
+# driver). wpa-supplicant-mini is WPA2-PSK station mode only (no
+# EAP/TLS, no AP/mesh) -- matches the DHCP-client-only, no-AP-stack
+# shape of this build. wireless-regdb gives cfg80211 real per-country
+# channel/power limits instead of the permissive default; iw is for
+# manual scan/associate diagnostics.
+wpa-supplicant-mini
+wireless-regdb
+iw
+
+# RTL8192CU firmware blob the rtl8xxxu kernel driver request_firmware()s
+# at probe time (rtlwifi/rtl8192cufw_TMSC.bin) -- without it, probe
+# fails with -11 and the dongle never gets a wlan* interface, even
+# though it enumerates fine on the USB bus.
+rtl8192cu-firmware
+
+# Onboard audio (SGTL5000 codec via SAIF) verification: aplay/speaker-test
+# to confirm /proc/asound/cards shows the codec and PCM playback works.
+alsa-utils
+
+# コンテナ基盤 brainwrt-ct が使う ujail(procd 付属)。
+procd-ujail
+
+# カメラのユーザーランド(v4l-utils/fswebcam)はベースから外し、
+# /data/apps/webcam バンドルへ移設した(scripts/build_bundle.sh)。

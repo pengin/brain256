@@ -1,0 +1,4 @@
+config system
+	option hostname 'brainwrt'
+	option zonename 'Asia/Tokyo'
+	option timezone 'JST-9'
