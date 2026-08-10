@@ -2,18 +2,16 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# kpartx/losetup mount the donor SD image's partitions (needs a
-# privileged container). libarchive-tools provides bsdtar, which
-# preserves the xattrs/device nodes that GNU tar mishandles by default.
-# The second group is what the OpenWrt ImageBuilder needs to run.
-# The third group is for OpenWrt full-source kernel work (M2): cloning
-# openwrt/openwrt and running `make target/linux/prepare` to materialize
-# the patched kernel-6.6 tree we port Brain support onto.
-# The fourth group is for cross-compiling third-party CMake-based
-# libraries (e.g. NCNN, for the M4 on-device inference feasibility
-# spike) against the existing arm926ej-s/musl toolchain, and for
-# sanity-checking the resulting armv5tej binaries under user-mode QEMU
-# emulation before spending real-hardware time on them.
+# kpartx/losetup で donor SD イメージのパーティションをマウントするため、
+# privileged コンテナが必要。libarchive-tools の bsdtar は、標準設定の GNU
+# tar が扱いを誤りやすい xattr とデバイスノードを保持する。
+# 2 つ目のグループは OpenWrt ImageBuilder の実行に必要。
+# 3 つ目のグループは OpenWrt フルソースカーネル作業（M2）用。
+# openwrt/openwrt の clone と `make target/linux/prepare` により、Brain 対応を移植
+# する patched kernel-6.6 ツリーを作る。
+# 4 つ目のグループは、既存の arm926ej-s/musl ツールチェーンに対して
+# NCNN などの CMake ベースのサードパーティライブラリをクロスコンパイルし、
+# 実機で試す前に user-mode QEMU で armv5tej バイナリを検査するためのもの。
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \

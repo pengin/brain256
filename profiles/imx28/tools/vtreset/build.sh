@@ -1,11 +1,10 @@
 #!/bin/sh
-# Cross-compiles vtreset.c for ARMv5 using the same brainwrt-base:armv5
-# Docker image scripts/ct.sh uses for bundle builds, and writes the
-# stripped binary straight into the overlay (profiles/imx28/overlay/
-# usr/sbin/brainwrt-vtreset is a committed prebuilt binary -- the
-# overlay mechanism itself only copies files, it doesn't compile
-# anything, so this script must be re-run and its output re-committed
-# whenever vtreset.c changes).
+# バンドルビルドで scripts/ct.sh が使うものと同じ brainwrt-base:armv5 Docker
+# イメージで vtreset.c を ARMv5 向けにクロスコンパイルし、strip 済みバイナリを
+# overlay（profiles/imx28/overlay/usr/sbin/）へ直接書き出す。brainwrt-vtreset は
+# コミット済みの prebuilt バイナリであり、overlay の仕組みはファイルをコピーする
+# だけでコンパイルしない。そのため vtreset.c を変更したらこのスクリプトを再実行し、
+# 出力も再コミットする。
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)

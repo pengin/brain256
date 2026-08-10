@@ -1,21 +1,21 @@
 #!/bin/sh
-# list(登録全件を state 付きで表示)と top(CPU%/MEM% を 1 回サンプル)を、
-# 偽の $APPS と $CGBASE を組んで検証する。cgroup/overlay 不要でホストで回る。
+# list（登録全件を state 付きで表示）と top（CPU%／MEM% を 1 回サンプル）を、
+# 偽の $APPS と $CGBASE を組んで検証する。cgroup／overlay 不要でホスト上で実行できる。
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 CT="$here/../../profiles/imx28/overlay/usr/sbin/brainwrt-ct"
 root=$(mktemp -d)
 APPS="$root/apps"; CGB="$root/cg/brainwrt-ct"
 
-# 登録: webcam(稼働中・autostart on)/ idle(停止・autostart off)/
-#       stale(cgroup はあるが procs 空=クラッシュ後、down 扱いになるべき)
+# 登録: webcam（稼働中・autostart on）／idle（停止・autostart off）／
+#       stale（cgroup はあるが procs 空＝クラッシュ後、down 扱いになるべき）
 mkdir -p "$APPS/webcam" "$APPS/idle" "$APPS/stale"
 printf 'exec="/x"\nautostart="1"\n' > "$APPS/webcam/manifest.conf"
 printf 'exec="/x"\nautostart="0"\n' > "$APPS/idle/manifest.conf"
 printf 'exec="/x"\nautostart="0"\n' > "$APPS/stale/manifest.conf"
 mkdir -p "$CGB/stale"; : > "$CGB/stale/cgroup.procs"   # 空 procs
 
-# webcam だけ cgroup を用意(=稼働中扱い)
+# webcam だけ cgroup を用意（=稼働中扱い）。
 mkdir -p "$CGB/webcam"
 printf '1411\n1418\n' > "$CGB/webcam/cgroup.procs"
 echo 462848    > "$CGB/webcam/memory.current"
@@ -40,17 +40,17 @@ chk "$out" "30/187" list
 chk "$out" "idle"   list
 chk "$out" "down"   list
 chk "$out" "off"    list
-# stale は cgroup があるが procs 空 -> down 扱い(has_procs が空を false と判定)
+# stale は cgroup があるが procs 空 -> down 扱い（has_procs が空を false と判定）。
 echo "$out" | grep -E '^stale +down' >/dev/null || { echo "stale should be down"; fail=1; }
 
 out=$(env BRAINWRT_CT_APPS="$APPS" BRAINWRT_CT_CGROOT="$root/cg" "$CT" top 1)
 echo "--- top ---"; echo "$out"
 chk "$out" "CPU%"   top
 chk "$out" "webcam" top
-# 静的な cpu.stat なので delta=0 -> CPU% 0.0、MEM% は 462848/33554432*100=1.4
+# 静的な cpu.stat なので delta=0 -> CPU% 0.0、MEM% は 462848/33554432*100=1.4。
 chk "$out" "0.0%"   top
 chk "$out" "1.4%"   top
-# idle は cgroup が無い(=停止)ので top には出ない
+# idle は cgroup がない（=停止）ので top には出ない。
 echo "$out" | grep -qF "idle" && { echo "idle should NOT appear in top"; fail=1; } || true
 
 [ "$fail" = 0 ] && echo PASS || { echo FAIL; exit 1; }

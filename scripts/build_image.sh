@@ -1,24 +1,23 @@
 #!/bin/bash
-# SD image builder for brainwrt — a model-selectable derivative of
-# buildbrain's image/build_image.sh.
+# brainwrt 用 SD イメージビルダー。buildbrain の image/build_image.sh を
+# モデル選択対応にした派生版。
 #
-# Derived from https://github.com/brain-hackers/buildbrain
+# 派生元: https://github.com/brain-hackers/buildbrain
 #   image/build_image.sh
 #   Copyright (c) 2020 Takumi Sueda
 #   Licensed under the MIT License.
-# Modifications Copyright (c) 2026 pengin, also under the MIT License.
-# See NOTICE.md.
+# 改変部分の Copyright (c) 2026 pengin、ライセンスは同じく MIT。
+# NOTICE.md 参照。
 #
-# Runs inside buildbrain-builder:local with the buildbrain repo at
-# BUILDBRAIN_ROOT (default /work); see the Makefile's docker-image
-# target.
+# buildbrain-builder:local 内で実行し、buildbrain リポジトリは BUILDBRAIN_ROOT
+#（既定 /work）に置かれているものとする。Makefile の docker-image ターゲット参照。
 #
-# BRAIN_MODELS selects which Brain models to build U-Boot/nk.bin and
-# DTBs for (default: sh3 — the only device on hand). The full set is:
+# BRAIN_MODELS で U-Boot/nk.bin と DTB を作る Brain モデルを選ぶ。既定は手元の
+# 実機だけである sh3。全モデルは次のとおり。
 #   a7200 a7400 sh1 sh2 sh3 sh4 sh5 sh6 sh7
 #
-# The kernel (zImage) and the per-model DTBs come from linux-brain
-# (6.1.70), built in the buildbrain tree — see the book's 3.2.
+# カーネル（zImage）とモデルごとの DTB は buildbrain ツリーでビルドした
+# linux-brain（6.1.70）から取得する。本の 3.2 参照。
 set -uex -o pipefail
 
 show_help() {
@@ -56,8 +55,8 @@ export CROSS_COMPILE=arm-linux-gnueabi-
 
 mkdir -p ${WORK}
 mkdir -p ${WORK}/lilobin
-# Stale payloads from a previous (possibly all-model) run would leak
-# into p1/nk and p1/loader via the wildcard copies below.
+# 以前の（全モデルを含む可能性がある）実行で残った payload が、下のワイルドカード
+# コピー経由で p1/nk と p1/loader に混入しないようにする。
 rm -f ${WORK}/*.bin ${WORK}/lilobin/*.bin
 
 for i in ${MODELS}; do
@@ -90,13 +89,14 @@ done
 
 dd if=/dev/zero of=${IMG} bs=1M count=${SIZE_M}
 
-# 3 パーティション: p1=boot(FAT), p2=rootfs(ext4, 固定), p3=data(ext4, 残り)。
-# /data(brainwrt-ct のバンドル置場)を rootfs から分離し、rootfs 再フラッシュでも
-# バンドル/データが残るようにする。p3 はイメージ内では残り全部だが、初回ブートで
-# SD カードの実容量まで拡張する(profiles の datafs oneshot、実機検証後に追加)。
+# 3 パーティション: p1=boot(FAT)、p2=rootfs(固定)、p3=data(残り全部)。
+# /data（brainwrt-ct のバンドル置き場）を rootfs から分離し、rootfs を再フラッシュ
+# してもバンドル／データが残るようにする。p3 はイメージ内では残り全部だが、
+# 初回ブートで SD カードの実容量まで拡張する（profiles の data-grow oneshot、
+# 実機検証後に追加）。
 START1=2048
-SECTORS1=$((1024 * 1024 * 64 / 512))          # 64MB boot
-ROOTFS_M=${ROOTFS_PART_M:-160}                # rootfs partition size (MB)
+SECTORS1=$((1024 * 1024 * 64 / 512))          # boot パーティション (64 MB)
+ROOTFS_M=${ROOTFS_PART_M:-160}                # rootfs パーティションサイズ (MB)
 SECTORS2=$((ROOTFS_M * 1024 * 1024 / 512))
 START2=$((START1 + SECTORS1))
 START3=$((START2 + SECTORS2))
@@ -140,10 +140,9 @@ done
 sudo mkdir -p ${WORK}/p1/nk
 sudo cp ${WORK}/*.bin ${WORK}/p1/nk/
 
-# Bundle any staged .ipk files onto the boot partition so they can be
-# installed on-device without a network (the Brain has no Ethernet or
-# WiFi of its own). Drop them in output/ipk/ before running; skipped
-# when that directory is empty or absent.
+# ステージング済みの .ipk があればブートパーティションへ置き、ネットワークなしで
+# 実機にインストールできるようにする（Brain 自体には Ethernet も Wi-Fi もない）。
+# 実行前に output/ipk/ へ置く。ディレクトリがないか空なら省略する。
 IPK_DIR=${IPK_DIR:-/brainwrt-output/ipk}
 if ls ${IPK_DIR}/*.ipk >/dev/null 2>&1; then
     sudo cp ${IPK_DIR}/*.ipk ${WORK}/p1/

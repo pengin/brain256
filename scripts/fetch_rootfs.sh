@@ -1,10 +1,10 @@
 #!/bin/bash
-# Fetch the donor OpenWrt SD image (mxs/generic) into cache/ and verify
-# its sha256 against the release's signed checksum list.
+# donor 用 OpenWrt SD イメージ（mxs/generic）を cache/ に取得し、リリースが公開する
+# 署名済みチェックサム一覧で sha256 を検証する。
 #
-# mxs/generic publishes no standalone rootfs tarball, so we borrow the
-# rootfs partition from the i2se_duckbill image (another i.MX28 board);
-# build_rootfs.sh extracts it. Userland is generic arm_arm926ej-s.
+# mxs/generic は単独の rootfs tarball を公開していないため、別の i.MX28 ボード
+# である i2se_duckbill のイメージから rootfs パーティションを借り、
+# build_rootfs.sh で取り出す。ユーザーランドは汎用の arm_arm926ej-s である。
 set -ueo pipefail
 
 VERSION="${OPENWRT_VERSION:-24.10.7}"

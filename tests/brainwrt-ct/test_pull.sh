@@ -1,6 +1,6 @@
 #!/bin/sh
-# brainwrt-ct pull を、wget をスタブして検証する。実ネットワーク/実レジストリは
-# 使わない。既存 test_lifecycle.sh と同じ PATH スタブ + env var seam の流儀。
+# brainwrt-ct pull を wget のスタブで検証する。実ネットワーク／実レジストリは使わない。
+# 既存 test_lifecycle.sh と同じ PATH スタブ + env var seam の流儀。
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 CT="$here/../../profiles/imx28/overlay/usr/sbin/brainwrt-ct"
@@ -15,7 +15,7 @@ no()   { if "$@" 2>/dev/null; then echo "SHOULD FAIL: $*"; fail=1; fi; }
 
 ct() { env BRAINWRT_CT_APPS="$APPS" BRAINWRT_CT_CGROOT="$CGROOT" "$CT" "$@"; }
 
-# pull 対象の「本物」バンドル一式(fixture)を tar 化しておく
+# pull 対象の「本物」バンドル一式（fixture）を tar 化しておく。
 fixture_src="$root/fixture-src"; mkdir -p "$fixture_src/root/usr/bin"
 printf 'exec="/usr/bin/foo"\nautostart="0"\n' > "$fixture_src/manifest.conf"
 echo '#!/bin/sh' > "$fixture_src/root/usr/bin/foo"
@@ -23,7 +23,7 @@ chmod +x "$fixture_src/root/usr/bin/foo"
 FIXTURE="$root/fixture.tar"
 tar -C "$fixture_src" -cf "$FIXTURE" manifest.conf root
 
-# manifest.conf を欠いた不正バンドル(cmd_install がここで die する想定)
+# manifest.conf を欠いた不正バンドル（cmd_install がここで die する想定）。
 bad_src="$root/bad-src"; mkdir -p "$bad_src/root"
 echo 'no manifest here' > "$bad_src/root/placeholder"
 BADFIXTURE="$root/badfixture.tar"
@@ -109,7 +109,7 @@ echo "--- pull with corrupt (non-tar) download must not leave an orphaned stagin
 : > "$WGET_CALLS_FILE"
 export WGET_MODE=garbage
 no ct pull corrupt1
-orphans=$(find "$APPS" -maxdepth 1 -name 'corrupt1.pull.*')
+orphans=$(find "$APPS" -maxdepth 1 -name '.brainwrt-ct-pull-*')
 [ -z "$orphans" ] || { echo "pull: orphaned staging dir left behind after extraction failure: $orphans"; fail=1; }
 [ -e "$APPS/corrupt1" ] && { echo "pull: corrupt download registered a bundle"; fail=1; } || true
 export WGET_MODE=ok
@@ -120,15 +120,15 @@ if [ "$(id -u)" = "0" ]; then
 else
   : > "$WGET_CALLS_FILE"
   must ct pull rmfail                                   # 事前に正常登録しておく
-  # rmfail ディレクトリ自体から書き込み権限を剥奪する。root 以外では、
-  # ディレクトリ直下のエントリ(manifest.conf 等)の unlink にはそのディレクトリ
-  # 自身への write 権限が要るため、これで後段の `rm -rf "$APPS/rmfail"`
-  # (旧バンドル削除)を確実に失敗させられる。
+  # rmfail ディレクトリ自体から書き込み権限を剥奪する。root 以外では、ディレクトリ
+  # 直下のエントリ（manifest.conf など）の unlink にはそのディレクトリ自身への
+  # write 権限が要るため、これで後段の `rm -rf "$APPS/rmfail"`（旧バンドル削除）を
+  # 確実に失敗させられる。
   chmod 555 "$APPS/rmfail"
   echo 'CHANGED-RMFAIL' > "$fixture_src/root/usr/bin/foo"
   tar -C "$fixture_src" -cf "$FIXTURE" manifest.conf root
   no ct pull rmfail                                     # 旧バンドル rm -rf が失敗 -> pull 全体も失敗するはず
-  staging_found=$(find "$APPS" -maxdepth 1 -name 'rmfail.pull.*' 2>/dev/null)
+  staging_found=$(find "$APPS" -maxdepth 1 -name '.brainwrt-ct-pull-*' 2>/dev/null)
   [ -n "$staging_found" ] || { echo "pull: BUG - validated staging replacement was deleted after old-bundle teardown failure"; fail=1; }
   chmod 755 "$APPS/rmfail" 2>/dev/null || true
 fi

@@ -100,9 +100,9 @@ func TestGetUnknownNameReturns404(t *testing.T) {
 
 func TestPushInvalidNameReturns400(t *testing.T) {
 	s := newTestServer(t)
-	// %20 decodes to a space, which the segment charset rejects. (%2F would
-	// decode to "/" and split into a 3rd path segment instead of reaching
-	// validation -- this must stay a same-segment invalid character.)
+	// %20 はスペースにデコードされ、セグメントの文字種検査で拒否される。
+	// %2F は "/" にデコードされて 3 つ目のパスセグメントに分割され、
+	// 検証まで到達しないため、同一セグメント内の不正文字を使う。
 	req := httptest.NewRequest(http.MethodPut, "/bundles/web%20cam/v1", strings.NewReader("data"))
 	req.Header.Set("Authorization", "Bearer secret")
 	w := httptest.NewRecorder()
@@ -166,16 +166,14 @@ func TestLoadConfigRequiresPushToken(t *testing.T) {
 	}
 }
 
-// TestGenericStorageErrorDoesNotLeakInternals forces Storage.Put to fail
-// with a plain *PathError (neither ErrNotFound nor *validationError) by
-// pre-creating a regular file where the bundle name's directory needs to
-// go, so os.MkdirAll fails with "not a directory". The response to the
-// client must be a generic message -- it must not echo the raw OS error
-// text or the server's data directory path.
+// TestGenericStorageErrorDoesNotLeakInternals は、バンドル名のディレクトリを作る場所に
+// 通常ファイルを先に置き、os.MkdirAll が「ディレクトリではない」で失敗する状況を作る。
+// クライアントへの応答は汎用メッセージにし、OS の生のエラー文やサーバーのデータ
+// ディレクトリを返さないことを確認する。
 func TestGenericStorageErrorDoesNotLeakInternals(t *testing.T) {
 	dir := t.TempDir()
-	// Block the directory the storage layer needs to create for bundle
-	// "webcam" by putting a regular file there instead.
+	// ストレージ層がバンドル "webcam" 用に作るディレクトリを、通常ファイルで
+	// ふさいでおく。
 	if err := os.WriteFile(filepath.Join(dir, "webcam"), []byte("x"), 0o644); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -198,10 +196,9 @@ func TestGenericStorageErrorDoesNotLeakInternals(t *testing.T) {
 	}
 }
 
-// TestPushBodyOverLimitReturns413 confirms that a request body larger than
-// the configured maxBundleBytes ceiling is rejected with 413 rather than
-// being buffered in full. maxBundleBytes is temporarily lowered so the test
-// doesn't need to allocate hundreds of megabytes.
+// TestPushBodyOverLimitReturns413 は、設定した maxBundleBytes を超える
+// リクエスト本文を 413 で拒否することを確認する。数百 MB を確保せずに済む
+// よう、テスト中だけ上限を小さくする。
 func TestPushBodyOverLimitReturns413(t *testing.T) {
 	orig := maxBundleBytes
 	maxBundleBytes = 16
@@ -220,9 +217,8 @@ func TestPushBodyOverLimitReturns413(t *testing.T) {
 	}
 }
 
-// TestPushBodyAtLimitSucceeds is a sanity check that the limit is applied
-// as "larger than maxBundleBytes is rejected", not off-by-one against
-// exactly maxBundleBytes.
+// TestPushBodyAtLimitSucceeds は、上限ちょうどの本文は許可し、「上限より
+// 大きければ拒否」という条件が 1 バイトずれていないことを確認する。
 func TestPushBodyAtLimitSucceeds(t *testing.T) {
 	orig := maxBundleBytes
 	maxBundleBytes = 16

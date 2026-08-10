@@ -40,6 +40,25 @@ func TestLatestResolvesToMostRecentPush(t *testing.T) {
 	}
 }
 
+func TestCorruptLatestPointerIsRejected(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStorage(dir)
+	if err := os.MkdirAll(dir+"/webcam", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(dir+"/webcam/latest", []byte("../../outside"), 0o644); err != nil {
+		t.Fatalf("WriteFile latest: %v", err)
+	}
+
+	_, err := s.Get("webcam", "latest")
+	if err == nil {
+		t.Fatal("Get latest: expected corrupt pointer to be rejected")
+	}
+	if strings.Contains(err.Error(), "outside") {
+		t.Fatalf("Get latest: error should not expose the pointer contents: %v", err)
+	}
+}
+
 func TestGetUnknownNameReturnsNotFound(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStorage(dir)
@@ -84,11 +103,9 @@ func TestInvalidSegmentsRejected(t *testing.T) {
 	}
 }
 
-// TestOverlongSegmentRejectedAsValidationError confirms that a too-long
-// but otherwise-valid-charset segment is rejected by validateSegment
-// itself (a *validationError, mapping to HTTP 400), rather than being
-// allowed through to fail later at the filesystem layer (e.g. ENAMETOOLONG
-// from os.MkdirAll, which would surface as a 500).
+// TestOverlongSegmentRejectedAsValidationError は、文字種は正しいが長すぎるセグメントを
+// validateSegment 自体で拒否することを確認する（*validationError なので HTTP 400 になる）。
+// ファイルシステム層まで通してから ENAMETOOLONG で失敗し、HTTP 500 になることを防ぐ。
 func TestOverlongSegmentRejectedAsValidationError(t *testing.T) {
 	longName := strings.Repeat("a", 256)
 	err := validateSegment(longName)
@@ -101,8 +118,8 @@ func TestOverlongSegmentRejectedAsValidationError(t *testing.T) {
 	}
 }
 
-// TestMaxLengthSegmentAccepted is a sanity check that the cap is "longer
-// than 255 is rejected", not off-by-one against exactly 255.
+// TestMaxLengthSegmentAccepted は、255 文字ちょうどは許可し、256 文字以上を
+// 拒否する上限が 1 文字ずれていないことを確認する。
 func TestMaxLengthSegmentAccepted(t *testing.T) {
 	name := strings.Repeat("a", 255)
 	if err := validateSegment(name); err != nil {

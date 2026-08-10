@@ -1,14 +1,14 @@
 #!/bin/sh
-# brainwrt-ct up が、バンドル自身のプロセスが(`down` を経由せず)自分で
-# 終了した場合でも、自動的に cmd_down(overlay 解除・cgroup 削除・
-# kdreset/vtreset)を呼ぶことを検証する。neovim バンドルの実機検証で
+# brainwrt-ct up が、バンドル自身のプロセスが `down` を経由せず自分で終了した
+# 場合でも、自動的に cmd_down（overlay 解除・cgroup 削除・kdreset/vtreset）を呼ぶ
+# ことを検証する。neovim バンドルの実機検証で
 # 判明したギャップ: `:q` だけではコンソール/VT が元に戻らず、明示的な
 # `ct down` が別途必要だった問題への修正。
 #
 # 実 overlay/ujail は使わず、PATH 経由で mount/ujail をスタブする。
-# 偽の cgroup.procs はただのファイルなので、実 cgroupfs と違いプロセスが
-# 終了しても自動では空にならない -- スタブ ujail 自身が「子プロセスの
-# 終了を検知したらファイルを空にする」ところまで模擬することで、
+# 偽の cgroup.procs はただのファイルなので、実 cgroupfs と違いプロセスが終了しても
+# 自動では空にならない。スタブ ujail 自身が「子プロセスの終了を検知したらファイルを
+# 空にする」ところまで模擬することで、
 # reap_on_exit の待ち合わせループが実際に終了できるようにしている。
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
@@ -28,17 +28,17 @@ exit 0
 EOF
 chmod +x "$stub/mount"
 
-# setsid: macOS には無いコマンドなのでスタブする(セッション分離自体は
-# このテストの検証対象ではない -- ただの引数そのまま exec)
+# setsid: macOS にはないコマンドなのでスタブする（セッション分離自体は
+# このテストの検証対象ではなく、引数をそのまま exec するだけ）。
 cat > "$stub/setsid" << 'EOF'
 #!/bin/sh
 exec "$@"
 EOF
 chmod +x "$stub/setsid"
 
-# ujail: -R/-p/-h/-w 等のjailフラグは無視し、`--` 以降だけそのまま実行する。
-# 実行後、FAKE_CGROUP_PROCS を空にして「cgroup からプロセスが消えた」を
-# 模擬する(実cgroupfsならカーネルが自動でやることの代役)。
+# ujail: -R/-p/-h/-w などの jail フラグは無視し、`--` 以降だけそのまま実行する。
+# 実行後、FAKE_CGROUP_PROCS を空にして「cgroup からプロセスが消えた」ことを
+# 模擬する（実 cgroupfs ならカーネルが自動でやることの代役）。
 cat > "$stub/ujail" << 'EOF'
 #!/bin/sh
 while [ $# -gt 0 ]; do
@@ -54,16 +54,15 @@ exit "$rc"
 EOF
 chmod +x "$stub/ujail"
 
-# 登録するバンドル: 少し生きてから終了するだけのスタブ ("foo" 実行ファイル)。
+# 登録するバンドル: 少し生きてから終了するだけのスタブ（"foo" 実行ファイル）。
 # 一瞬で終了すると reap_on_exit の最初のポーリングが「起動を観測する」前に
 # 終わってしまい得るため、短い生存時間を持たせる。
 #
-# exec は実ホストの絶対パス(stub 配下)を指す -- 本来は overlay マウント
-# 後の merged/usr/bin/foo をユールが chroot 的に -R で解決する想定だが、
-# このテストの ujail スタブは chroot をしない(reap_on_exit の検証だけが
-# 目的で、実 jail 分離までは模擬しない)ため、manifest.conf の usr/bin/foo
-# 相対レイアウト自体は install の検証に留め、実際に起動するパスは stub
-# 側の絶対パスにしている。
+# exec は実ホストの絶対パス（stub 配下）を指す。本来は overlay マウント後の
+# merged/usr/bin/foo を ujail が chroot 的に -R で解決する想定だが、このテストの
+# ujail スタブは chroot をしない（reap_on_exit の検証だけが目的で、実 jail 分離までは
+# 模擬しない）。そのため manifest.conf の usr/bin/foo 相対レイアウト自体は install の
+# 検証に留め、実際に起動するパスは stub 側の絶対パスにしている。
 foo_bin="$stub/foo-app"
 cat > "$foo_bin" << 'EOF'
 #!/bin/sh
@@ -101,8 +100,8 @@ must ct install foo "$src"
 must ct up foo
 
 # reap_on_exit はバックグラウンドなので、後始末が終わるまで少し待つ
-# (実装は BRAINWRT_CT_REAP_POLL=0 のポーリング間隔を使う -- 実運用の
-# 1秒間隔をテストで実際に待つ必要はない)。
+#（実装は BRAINWRT_CT_REAP_POLL=0 のポーリング間隔を使うため、実運用の 1 秒間隔を
+# テストで実際に待つ必要はない）。
 i=0
 while [ ! -f "$KDRESET_CALLS_FILE" ] || [ ! -s "$KDRESET_CALLS_FILE" ]; do
   i=$((i + 1))
@@ -110,19 +109,18 @@ while [ ! -f "$KDRESET_CALLS_FILE" ] || [ ! -s "$KDRESET_CALLS_FILE" ]; do
   sleep 0.1 2>/dev/null || sleep 1
 done
 
-# cgroup ディレクトリの rmdir 成功有無は検証しない: 実 cgroupfs は
-# cgroup.procs 等の擬似ファイルが残っていても rmdir を許すが、この
-# テストの fake cgroup.procs はただの通常ファイルなので rmdir が
-# ENOTEMPTY で失敗し得る(test_down_kdreset.sh も同じ理由で検証していない
-# 既存の割り切り)。kdreset が呼ばれたこと = cmd_down が実際に走ったことの
-# 十分な証拠として扱う。
+# cgroup ディレクトリの rmdir 成功有無は検証しない。実 cgroupfs は cgroup.procs などの
+# 擬似ファイルが残っていても rmdir を許すが、このテストの fake cgroup.procs はただの
+# 通常ファイルなので rmdir が ENOTEMPTY で失敗し得る（test_down_kdreset.sh も同じ理由で
+# 検証していない既存の割り切り）。kdreset が呼ばれたことを、cmd_down が実際に走った
+# ことの十分な証拠として扱う。
 [ -s "$KDRESET_CALLS_FILE" ] || { echo "reaper never called cmd_down (kdreset not invoked)"; fail=1; }
 mount | grep -q "$APPS/foo/merged" && { echo "overlay still mounted after auto-teardown"; fail=1; } || true
 
 echo "--- up + explicit down racing the reaper is still safe (idempotent) ---"
 : > "$KDRESET_CALLS_FILE"
 must ct up foo
-# 明示的な down を(reaper がまだ動いている可能性がある間に)重ねて呼ぶ --
+# 明示的な down を（reaper がまだ動いている可能性がある間に）重ねて呼ぶ。
 # cmd_down 自体が冪等なので、両方が動いても down 自体は失敗しない。
 must ct down foo
 i=0

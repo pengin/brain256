@@ -1,9 +1,8 @@
 #!/bin/sh
-# Switch usb0 between host role (hub + peripherals on the OTG port)
-# and device role (NCM ethernet gadget, SSH to 192.168.28.2). i.MX28
-# has no ID-pin hardware autodetect (see imx28-pwsh3.dts &usb0), so
-# the role has to be set explicitly here via the usb-role-switch
-# class instead of just plugging in an OTG adapter.
+# usb0 を host role（OTG ポートの hub + 周辺機器）と device role（NCM Ethernet
+# gadget、SSH は 192.168.28.2）の間で切り替える。i.MX28 には ID ピンによる
+# ハードウェア自動判定がない（imx28-pwsh3.dts の &usb0 参照）ため、OTG アダプターを
+# 挿すだけではなく usb-role-switch クラスで明示的に設定する。
 set -e
 
 usage() {
@@ -19,9 +18,9 @@ SW=$(ls /sys/class/usb_role 2>/dev/null | head -n1)
 case "$1" in
 host)
 	echo host > "/sys/class/usb_role/$SW/role"
-	# Wait for a USB-Ethernet dongle behind the hub to enumerate and
-	# bind (cdc_ncm/r8152/asix all register as ethX), then DHCP it --
-	# this is the network path once usb0 leaves device role.
+		# hub の背後にある USB-Ethernet dongle の enumerate と bind を待つ
+		#（cdc_ncm/r8152/asix はいずれも ethX として登録される）。その後 DHCP を
+		# 実行する。usb0 を device role から離した後のネットワーク経路である。
 	IFACE=""
 	i=0
 	while [ $i -lt 10 ]; do

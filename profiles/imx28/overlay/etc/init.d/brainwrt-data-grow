@@ -1,12 +1,12 @@
 #!/bin/sh /etc/rc.common
-# p3(データパーティション)を実カード容量まで初回ブートで拡張する。
-# fdisk/sfdisk は使わない: p3 は末尾のパーティションなので、MBR のセクタ数
-# フィールド(オフセット490、4バイト、リトルエンディアン)だけを直接
+# p3（データパーティション）を実カード容量まで初回ブートで拡張する。
+# fdisk/sfdisk は使わない。p3 は末尾のパーティションなので、MBR のセクタ数
+# フィールド（オフセット 490、4 バイト、リトルエンディアン）だけを直接
 # 書き換えれば足りる。resize2fs は usr/share/brainwrt-data-grow/ に同梱した
-# e2fsprogs 一式をオフラインで opkg install して用意する(その ipk を集めるのが
-# scripts/fetch_data_grow_ipks.sh)。
+# e2fsprogs 一式をオフラインで opkg install して用意する（その ipk を集めるのが
+# scripts/fetch_data_grow_ipks.sh）。
 #
-# brainwrt-data(mount, START=10)より前に完了させる必要がある。
+# brainwrt-data（mount、START=10）より前に完了させる必要がある。
 START=9
 
 DISK_DEV="${DISK_DEV:-/dev/mmcblk1}"
@@ -18,7 +18,7 @@ STATE_FILE="${STATE_FILE:-/etc/brainwrt-data-grow.state}"
 IPK_DIR="${IPK_DIR:-/usr/share/brainwrt-data-grow}"
 LOG_FILE="${LOG_FILE:-/tmp/brainwrt-data-grow.log}"
 REBOOT_DELAY="${REBOOT_DELAY:-2}"
-# MBR の p3 エントリ(オフセット478、dos disklabel の3番目のエントリ)中、
+# MBR の p3 エントリ（オフセット 478、dos disklabel の 3 番目のエントリ）中、
 # セクタ数フィールドの絶対バイトオフセット。
 MBR_SECTORS_OFFSET="${MBR_SECTORS_OFFSET:-490}"
 
@@ -47,12 +47,12 @@ patch_mbr() {
     b2=$((sectors >> 16 & 255))
     b3=$((sectors >> 24 & 255))
     # printf の %o は引数を10進→8進の「テキスト」に変換するだけなので、
-    # `\%03o` は「バックスラッシュ + 数字3桁」という文字列(例: \004)を作る
-    # 段階(esc, command substitution。中身は印字可能文字だけなので安全)。
+    # `\%03o` は「バックスラッシュ + 数字 3 桁」という文字列（例: \004）を作る
+    # 段階（esc、command substitution。中身は印字可能文字だけなので安全）。
     # それを別の printf の「フォーマット文字列」として渡すと、printf 自身が
-    # \NNN エスケープをバイナリ1バイトへ解釈しながらファイルへ直接書き出す
-    # (command substitution を経由しないので、途中にNUL(\000)バイトが
-    # あっても切り詰められない)。
+    # \NNN エスケープをバイナリ 1 バイトへ解釈しながらファイルへ直接書き出す
+    #（command substitution を経由しないので、途中に NUL（\000）バイトがあっても
+    # 切り詰められない）。
     esc=$(printf '\\%03o\\%03o\\%03o\\%03o' "$b0" "$b1" "$b2" "$b3")
     printf "$esc" > "$tmp"
     dd if="$tmp" of="$DISK_DEV" bs=1 seek="$MBR_SECTORS_OFFSET" count=4 conv=notrunc 2>>"$LOG_FILE"

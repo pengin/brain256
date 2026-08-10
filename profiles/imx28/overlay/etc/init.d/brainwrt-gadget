@@ -1,8 +1,8 @@
 #!/bin/sh /etc/rc.common
-# Bring up a USB NCM ethernet gadget via configfs. The Brain's i.MX28
-# OTG port then shows up as a network interface on the connected PC
-# (NCM is driverless on macOS; static IPs, no DHCP on purpose since
-# dnsmasq is stripped from this build). SSH: root@192.168.28.2.
+# configfs で USB NCM Ethernet gadget を起動する。Brain の i.MX28 OTG ポートが
+# 接続先 PC のネットワークインターフェースとして現れる（NCM は macOS でドライバ
+# 不要）。dnsmasq を削除したビルドなので DHCP は意図的に使わず、固定 IP とする。
+# SSH: root@192.168.28.2。
 START=15
 
 boot() {

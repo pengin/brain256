@@ -1,8 +1,8 @@
 #!/bin/sh
-# brainwrt-data(/data を p3 へマウントする init.d スクリプト)の boot() を
-# 単体で検証する。実ブロックデバイスは用意できないため、
+# brainwrt-data（/data を p3 へマウントする init.d スクリプト）の boot() を単体で
+# 検証する。実ブロックデバイスは用意できないため、
 # BRAINWRT_DATA_FORCE=1 で通常ファイルを代用する。logger は syslog 行き
-# (端末に出ない)なので、mount 呼び出しの検証はスタブがマーカーファイルに
+#（端末に出ない）なので、mount 呼び出しの検証はスタブがマーカーファイルに
 # 記録する方式で行う。
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)

@@ -1,12 +1,10 @@
 #!/bin/bash
-# Build the Brain rootfs with the OpenWrt ImageBuilder (M1 flow,
-# replacing the donor-image extraction of M0). Runs inside the
-# brainwrt-builder container with --privileged (loop devices are
-# needed only for the sdcard-image fallback below).
+# OpenWrt ImageBuilder で Brain の rootfs を作る（M0 の donor イメージ抽出を
+# 置き換える M1 経路）。brainwrt-builder コンテナ内で --privileged を付けて実行する。
+# loop device が必要なのは、下の sdcard-image fallback の場合だけである。
 #
-# The ImageBuilder tree is extracted into the container's own
-# filesystem: it never needs device nodes, and this keeps the
-# macOS-unsafe bits off bind mounts.
+# ImageBuilder ツリーはコンテナ自身のファイルシステムへ展開する。デバイスノード
+# は必要なく、macOS で扱えない要素を bind mount から遠ざけられる。
 set -uex -o pipefail
 
 PROFILE=${1:-imx28}
@@ -23,15 +21,15 @@ IB_DIR=/ib
 [ -f "${IB_TAR}" ] || { echo "error: run 'make fetch-ib' first (${IB_TAR} missing)" >&2; exit 1; }
 [ -d "${PROFILE_DIR}" ] || { echo "error: unknown profile ${PROFILE}" >&2; exit 1; }
 
-# --- 1. Unpack the ImageBuilder ---------------------------------------------
+# --- 1. ImageBuilder を展開 -------------------------------------------------
 mkdir -p ${IB_DIR}
 bsdtar -xf "${IB_TAR}" -C ${IB_DIR} --strip-components=1
 
-# Ask for a plain rootfs tarball in addition to the device images.
+# デバイスイメージに加えて通常の rootfs tarball も生成させる。
 echo 'CONFIG_TARGET_ROOTFS_TARGZ=y' >> ${IB_DIR}/.config
 
-# --- 2. Build ------------------------------------------------------------------
-PACKAGES=$(grep -vE '^\s*(#|$)' "${PROFILE_DIR}/packages.txt" | tr '\n' ' ')
+# --- 2. ビルド --------------------------------------------------------------
+PACKAGES=$(grep -vE '^[[:space:]]*(#|$)' "${PROFILE_DIR}/packages.txt" | tr '\n' ' ')
 make -C ${IB_DIR} image \
     PROFILE="${DONOR}" \
     PACKAGES="${PACKAGES}" \
@@ -39,9 +37,9 @@ make -C ${IB_DIR} image \
 
 BINDIR=${IB_DIR}/bin/targets/mxs/generic
 
-# --- 3. Obtain the rootfs tree ---------------------------------------------------
-# Prefer the rootfs tarball; fall back to extracting the sdcard image's
-# second partition if this ImageBuilder ignores TARGZ.
+# --- 3. rootfs ツリーを取得 --------------------------------------------------
+# rootfs tarball を優先し、ImageBuilder が TARGZ を無視した場合は sdcard
+# イメージの第 2 パーティションを取り出す処理へフォールバックする。
 if ls ${BINDIR}/*rootfs.tar.gz >/dev/null 2>&1; then
     bsdtar -xpzf ${BINDIR}/*rootfs.tar.gz -C "${ROOTFS}"
 else
@@ -57,11 +55,11 @@ else
     rm -rf "${WORKIMG}"
 fi
 
-# --- 4. Adapt for Brain -----------------------------------------------------------
-# Kernel stays linux-brain's zImage until M2; OpenWrt kmods can't load.
+# --- 4. Brain 用に調整 ------------------------------------------------------
+# M2 までは linux-brain の zImage を使うため、OpenWrt の kmod はロードできない。
 rm -rf "${ROOTFS}/lib/modules" "${ROOTFS}/boot"/*
 
-# --- 5. Pack ------------------------------------------------------------------------
+# --- 5. パッケージ化 --------------------------------------------------------
 mkdir -p "$(dirname "${OUT}")"
 bsdtar -cpf "${OUT}" -C "${ROOTFS}" .
 du -sh "${ROOTFS}" || true

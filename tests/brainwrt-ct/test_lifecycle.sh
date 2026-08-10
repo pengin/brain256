@@ -1,6 +1,6 @@
 #!/bin/sh
-# install/remove(バンドル登録・解除)と enable/disable(autostart 切替)を、
-# 偽の $APPS を組んで検証する。cgroup/overlay 不要でホストで回る。
+# install/remove（バンドル登録・解除）と enable/disable（autostart 切替）を、
+# 偽の $APPS を組んで検証する。cgroup／overlay 不要でホスト上で実行できる。
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 CT="$here/../../profiles/imx28/overlay/usr/sbin/brainwrt-ct"
@@ -9,7 +9,7 @@ APPS="$root/apps"; mkdir -p "$APPS"
 CT_ENV_CGROOT="$root/cg"   # cgroup 無し=常に down 扱い
 ct() { env BRAINWRT_CT_APPS="$APPS" BRAINWRT_CT_CGROOT="$CT_ENV_CGROOT" "$CT" "$@"; }
 
-# ソースバンドル(ディレクトリ)を用意
+# ソースバンドル（ディレクトリ）を用意する。
 src="$root/src"; mkdir -p "$src/root/usr/bin"
 printf 'exec="/usr/bin/foo"\nautostart="0"\n' > "$src/manifest.conf"
 echo '#!/bin/sh' > "$src/root/usr/bin/foo"
@@ -26,6 +26,16 @@ must ct install foo "$src"
 
 echo "--- install twice must fail ---"
 no ct install foo "$src"
+
+echo "--- bundle names must not escape APPS ---"
+no ct install ../escape "$src"
+
+echo "--- manifest is data, not shell code ---"
+evil_manifest="$root/evil-manifest"; mkdir -p "$evil_manifest/root"
+printf 'exec="/x"\ntouch %s/pwned\n' "$root" > "$evil_manifest/manifest.conf"
+must env BRAINWRT_CT_DRYRUN=1 BRAINWRT_CT_APPS="$APPS" BRAINWRT_CT_CGROOT="$CT_ENV_CGROOT" "$CT" install evil-manifest "$evil_manifest"
+no env BRAINWRT_CT_DRYRUN=1 BRAINWRT_CT_APPS="$APPS" BRAINWRT_CT_CGROOT="$CT_ENV_CGROOT" "$CT" up evil-manifest
+[ ! -e "$root/pwned" ] || { echo "manifest executed shell code"; fail=1; }
 
 echo "--- install bad bundle (no manifest) must fail and not leave dir ---"
 bad="$root/bad"; mkdir -p "$bad"; echo x > "$bad/nope"
@@ -63,7 +73,7 @@ with tarfile.open(path, "w") as tf:
     ti.size = len(data)
     tf.addfile(ti, io.BytesIO(data))
     evil = b"evil"
-    ti2 = tarfile.TarInfo(marker)  # absolute path member name
+    ti2 = tarfile.TarInfo(marker)  # 絶対パスのメンバー名
     ti2.size = len(evil)
     tf.addfile(ti2, io.BytesIO(evil))
 PYEOF

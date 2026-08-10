@@ -10,14 +10,13 @@ import (
 	"strings"
 )
 
-// ErrNotFound is returned by Storage.Get when the requested name has never
-// been pushed (so "latest" can't resolve), or the name/version tar doesn't
-// exist on disk.
+// ErrNotFound は、指定された名前が一度も push されていない（そのため
+// "latest" を解決できない）か、name/version の tar がディスクにないときに
+// Storage.Get が返すエラー。
 var ErrNotFound = errors.New("not found")
 
-// validationError marks an error as caused by bad caller input (invalid
-// name/version), as opposed to an I/O failure. main.go uses errors.As to
-// map this to HTTP 400 instead of 500.
+// validationError は I/O 失敗ではなく、呼び出し元の不正な name/version が原因で
+// あることを示す。main.go は errors.As でこれを HTTP 400 に変換する。
 type validationError struct {
 	msg string
 }
@@ -30,16 +29,15 @@ func newValidationError(format string, args ...any) error {
 
 var validSegment = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
-// maxSegmentLength caps name/version path segments at a conservative,
-// common filesystem-component limit (matching the 255-byte NAME_MAX on
-// most filesystems), so overlong input is rejected here with a clean 400
-// instead of surfacing later as a filesystem-level error (e.g. ENAMETOOLONG).
+// maxSegmentLength は name/version のパスセグメントに保守的な上限を設ける。
+// 多くのファイルシステムの NAME_MAX（255 バイト）に合わせ、長すぎる入力を
+// 後段のファイルシステムエラー（例: ENAMETOOLONG）ではなく、ここで明確な
+// HTTP 400 として拒否する。
 const maxSegmentLength = 255
 
-// validateSegment checks that a name/version path segment is safe to use
-// as a filesystem path component: non-empty, restricted charset, not
-// literally "." or ".." (the charset alone permits both, since "." and "-"
-// are individually allowed), and not too long.
+// validateSegment は name/version のパスセグメントがファイルシステムの構成要素
+// として安全に使えるかを確認する。空でないこと、文字種が限定されていること、
+// "." や ".." そのものではないこと、長すぎないことを検査する。
 func validateSegment(s string) error {
 	if s == "" || !validSegment.MatchString(s) {
 		return newValidationError("invalid segment %q", s)
@@ -53,9 +51,9 @@ func validateSegment(s string) error {
 	return nil
 }
 
-// Storage persists bundle tarballs under dataDir, one subdirectory per
-// bundle name, with a "latest" pointer file recording the most recently
-// pushed version string.
+// Storage はバンドル tarball を dataDir 以下へ保存する。バンドル名ごとに
+// サブディレクトリを作り、直近に push されたバージョン文字列を "latest"
+// ポインタファイルへ記録する。
 type Storage struct {
 	dataDir string
 }
@@ -76,9 +74,8 @@ func (s *Storage) latestPath(name string) string {
 	return filepath.Join(s.bundleDir(name), "latest")
 }
 
-// Put validates name and version, then atomically writes data to
-// <dataDir>/<name>/<version>.tar and updates <dataDir>/<name>/latest to
-// point at version.
+// Put は name と version を検証し、<dataDir>/<name>/<version>.tar へ data を
+// 原子的に書き込み、<dataDir>/<name>/latest を version に更新する。
 func (s *Storage) Put(name, version string, data []byte) error {
 	if err := validateSegment(name); err != nil {
 		return err
@@ -102,10 +99,9 @@ func (s *Storage) Put(name, version string, data []byte) error {
 	return nil
 }
 
-// Get returns the tar bytes for name/version. If version is "latest", it is
-// first resolved via the latest pointer file. Returns ErrNotFound if name
-// has never been pushed (when resolving "latest") or the resolved
-// name/version tar does not exist.
+// Get は name/version の tar バイト列を返す。version が "latest" の場合は
+// latest ポインタファイルで解決する。latest の解決対象となる name が一度も push
+// されていない場合、または解決後の tar がない場合は ErrNotFound。
 func (s *Storage) Get(name, version string) ([]byte, error) {
 	if err := validateSegment(name); err != nil {
 		return nil, err
@@ -122,6 +118,13 @@ func (s *Storage) Get(name, version string) ([]byte, error) {
 			return nil, err
 		}
 		version = string(resolved)
+		// latest はサーバー内部のポインタファイルから読む値なので、
+		// パスを組み立てる前に、Put と同じ制約で再検証する。通常は
+		// Put が必ず検証済みの値を書き込むが、手動編集や破損時にも
+		// データディレクトリの外へ解決しないようにする。
+		if err := validateSegment(version); err != nil {
+			return nil, errors.New("invalid latest pointer")
+		}
 	}
 	data, err := os.ReadFile(s.tarPath(name, version))
 	if err != nil {
@@ -133,18 +136,17 @@ func (s *Storage) Get(name, version string) ([]byte, error) {
 	return data, nil
 }
 
-// BundleInfo summarizes one bundle's known versions and its resolved
-// latest version, for the read-only listing API.
+// BundleInfo は読み取り専用の一覧 API 用に、既知のバージョンと解決済みの
+// latest バージョンをまとめる。
 type BundleInfo struct {
 	Versions []string `json:"versions"`
 	Latest   string   `json:"latest"`
 }
 
-// List returns every bundle currently under dataDir, each with its known
-// versions (sorted alphabetically) and resolved latest version. Returns an
-// empty map, not an error, if dataDir does not exist yet (nothing has ever
-// been pushed) -- this keeps /api/bundles a clean 200+{} on a fresh server
-// instead of a 500.
+// List は dataDir 直下にある全バンドルについて、既知のバージョン（アルファベット順）
+// と解決済み latest を返す。dataDir がまだ存在しない（何も push されていない）場合は
+// エラーではなく空の map を返し、新規サーバーの /api/bundles を 500 ではなく 200+{}
+// に保つ。
 func (s *Storage) List() (map[string]BundleInfo, error) {
 	entries, err := os.ReadDir(s.dataDir)
 	if err != nil {
@@ -169,8 +171,8 @@ func (s *Storage) List() (map[string]BundleInfo, error) {
 	return result, nil
 }
 
-// listVersions returns the sorted version strings (tar filenames with the
-// .tar suffix stripped) for one bundle name.
+// listVersions は指定したバンドル名について、tar ファイル名から .tar を
+// 取り除いたバージョン文字列をソートして返す。
 func (s *Storage) listVersions(name string) ([]string, error) {
 	entries, err := os.ReadDir(s.bundleDir(name))
 	if err != nil {
@@ -189,9 +191,8 @@ func (s *Storage) listVersions(name string) ([]string, error) {
 	return versions, nil
 }
 
-// atomicWrite writes data to path by creating a temp file in the same
-// directory, writing and closing it, then renaming it into place. On any
-// failure the temp file is removed.
+// atomicWrite は同じディレクトリに一時ファイルを作り、data を書いて閉じた後に
+// 所定の場所へ rename する。途中で失敗した場合は一時ファイルを削除する。
 func atomicWrite(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".tmp-*")

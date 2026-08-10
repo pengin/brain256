@@ -66,7 +66,7 @@ cat /sys/fs/cgroup/cgroup.controllers   # "cpu memory" が要る
 
 | パス | 役割 |
 |---|---|
-| `manifest.conf` | 宣言(sh で source される key=value) |
+| `manifest.conf` | 宣言（許可された key=value だけをランチャが読み取る） |
 | `root/` | overlay の **upper**。ベースに重ねたい差分ファイル一式 |
 | `work/` | overlay の workdir(実行時に自動生成) |
 | `merged/` | overlay マウント先(実行時に自動生成、ujail の rootfs) |
@@ -110,6 +110,10 @@ brainwrt-ct {up|down|list|top|logs|enable|disable|install|remove|pull} <name> [a
 | `install <name> <dir\|tar>` | バンドルを `/data/apps/<name>/` に登録(ディレクトリコピー or tar 展開)。manifest.conf が無ければ拒否 |
 | `remove <name> [--force]` | 登録解除。稼働中/overlay 残存時は `--force` が要る(その場合 down してから削除) |
 | `pull <name> [version]` | `brain-registry` からバンドル tar を取得し登録。`version` 省略時は `latest`。既に同名バンドルが登録済みなら、新バンドルを別名 staging に検証込みで展開してから既存を down→削除して入れ替える(検証が失敗すれば既存はそのまま残る。入れ替え後は自動 up しない) |
+
+`<name>` と pull の `<version>` は、パスへ安全に連結するため英数字、`.`, `_`, `-`
+だけを使い、`.` と `..` は指定しない。`manifest.conf` は shell として実行せず、
+上表のキーだけを読み取る。
 
 出力例:
 ```

@@ -1,10 +1,9 @@
 #!/bin/sh
-# udhcpc script for the manual USB host-mode network path
-# (brainwrt-usb-mode host). There's no netifd proto bound to ethX/
-# wlan0 and dnsmasq is stripped from this build, so the stock
-# /usr/share/udhcpc/default.script (interface address/routes only)
-# never gets DHCP-provided DNS servers into /etc/resolv.conf. Wrap
-# it and add that.
+# 手動 USB host-mode ネットワーク経路（brainwrt-usb-mode host）用の udhcpc スクリプト。
+# ethX/wlan0 に紐づく netifd proto はなく、このビルドでは dnsmasq も削除している。
+# そのため標準の /usr/share/udhcpc/default.script（インターフェースのアドレス／経路
+# だけを設定）は、DHCP で受け取った DNS サーバーを /etc/resolv.conf へ書かない。
+# 標準スクリプトを呼んだ上で DNS を追加する。
 [ -z "$1" ] && echo "Error: should be run by udhcpc" && exit 1
 
 /usr/share/udhcpc/default.script "$1"

@@ -6,7 +6,7 @@ After=network.target
 ExecStart=/usr/local/bin/brain-registryd
 Environment=DATA_DIR=/var/lib/brain-registry
 Environment=LISTEN_ADDR=:8080
-# Set PUSH_TOKEN via an EnvironmentFile instead of inlining a secret here:
+# PUSH_TOKEN はここに秘密値を直書きせず、EnvironmentFile で設定する。
 EnvironmentFile=/etc/brain-registry/push-token.env
 Restart=on-failure
 DynamicUser=yes

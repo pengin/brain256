@@ -1,9 +1,9 @@
-# Package selection for the ImageBuilder rootfs (one entry per line,
-# '#' comments). Plain names are added; '-name' removes a package from
-# the profile's defaults. Passed to ImageBuilder's PACKAGES=.
+# ImageBuilder rootfs に入れるパッケージ（1 行 1 件、「#」はコメント）。
+# 通常の名前は追加し、「-name」は profile の既定パッケージから削除する。
+# ImageBuilder の PACKAGES= へ渡す。
 
-# The Brain is not a router: drop the routing/firewall stack that
-# OpenWrt includes by default.
+# Brain はルーターではないため、OpenWrt が既定で含める routing/firewall
+# スタックを削除する。
 -dnsmasq
 -odhcpd-ipv6only
 -firewall4
@@ -12,43 +12,40 @@
 -ppp
 -ppp-mod-pppoe
 
-# Keep dropbear for M1 USB-gadget-ether SSH access.
+# M1 の USB-gadget-ether 経由 SSH 接続用に dropbear を残す。
 
-# Timezone data (also doubles as the proven offline-opkg test case).
+# タイムゾーンデータ（検証済みの offline-opkg テストケースも兼ねる）。
 zoneinfo-core
 zoneinfo-asia
 
-# Touchscreen (SX8650 on i2c0@0x48) validation: evtest reads the input
-# device (/dev/input/eventN) and prints ABS_X/ABS_Y/BTN_TOUCH, so the
-# panel can be verified from the CUI without a GUI. i2c-tools (i2cdetect)
-# scans the bus to confirm which chips actually ACK -- the sx8650 node is
-# unvalidated (disabled even in linux-brain), and probe hit "reset
-# failed", so we first need to see whether 0x48 is really populated.
+# タッチスクリーン（i2c0@0x48 の SX8650）を検証する。evtest で入力デバイス
+#（/dev/input/eventN）を読み ABS_X/ABS_Y/BTN_TOUCH を表示し、GUI なしの CUI
+# からパネルを確認できる。i2c-tools（i2cdetect）でバスをスキャンし、実際に
+# ACK するチップを確認する。sx8650 ノードは未検証（linux-brain でも無効）で、
+# probe は「reset failed」になったため、まず 0x48 が実装されているかを見る。
 evtest
 i2c-tools
 
-# USB host-mode diagnostics: lsusb to confirm a hub (and whatever's
-# plugged into it) actually enumerates on usb0 in OTG host mode.
+# USB host-mode 診断。lsusb で hub とその先に挿した機器が、OTG host mode の
+# usb0 上で実際に enumerate されることを確認する。
 usbutils
 
-# WLAN client (GW-USEco300, Realtek RTL8192CU -> RTL8XXXU kernel
-# driver). wpa-supplicant-mini is WPA2-PSK station mode only (no
-# EAP/TLS, no AP/mesh) -- matches the DHCP-client-only, no-AP-stack
-# shape of this build. wireless-regdb gives cfg80211 real per-country
-# channel/power limits instead of the permissive default; iw is for
-# manual scan/associate diagnostics.
+# WLAN クライアント（GW-USEco300、Realtek RTL8192CU -> RTL8XXXU カーネル
+# ドライバ）。wpa-supplicant-mini は WPA2-PSK の station mode 専用（EAP/TLS、
+# AP/mesh なし）で、DHCP クライアントだけを使い AP スタックを持たないこの
+# ビルドに合う。wireless-regdb は permissive な既定値ではなく国ごとの実際の
+# チャネル／電力制限を cfg80211 に与え、iw は手動の scan/associate 診断用。
 wpa-supplicant-mini
 wireless-regdb
 iw
 
-# RTL8192CU firmware blob the rtl8xxxu kernel driver request_firmware()s
-# at probe time (rtlwifi/rtl8192cufw_TMSC.bin) -- without it, probe
-# fails with -11 and the dongle never gets a wlan* interface, even
-# though it enumerates fine on the USB bus.
+# rtl8xxxu カーネルドライバが probe 時に request_firmware() する RTL8192CU
+# firmware blob（rtlwifi/rtl8192cufw_TMSC.bin）。これがないと USB バス上では正常に
+# enumerate されても probe が -11 で失敗し、dongle に wlan* インターフェースが現れない。
 rtl8192cu-firmware
 
-# Onboard audio (SGTL5000 codec via SAIF) verification: aplay/speaker-test
-# to confirm /proc/asound/cards shows the codec and PCM playback works.
+# オンボードオーディオ（SAIF 経由の SGTL5000 codec）を検証する。aplay/
+# speaker-test で /proc/asound/cards に codec が現れ、PCM 再生が動くことを確認する。
 alsa-utils
 
 # コンテナ基盤 brainwrt-ct が使う ujail(procd 付属)。

@@ -1,6 +1,7 @@
 #!/bin/sh
-# registry.sh — brain-registry への push クライアント(母艦(Mac)側)。
-# 対応する pull は device 側の `brainwrt-ct pull` (profiles/imx28/overlay/usr/sbin/brainwrt-ct)。
+# registry.sh — brain-registry への push クライアント（母艦 Mac 側）。
+# 対応する pull は device 側の `brainwrt-ct pull`
+#（profiles/imx28/overlay/usr/sbin/brainwrt-ct）。
 set -eu
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -18,8 +19,8 @@ cmd_push() {
   tmp=$(mktemp)
   trap 'rm -f "$tmp"' EXIT
   tar -C "$bdir" -cf "$tmp" manifest.conf root
-  # macOS has no sha256sum (GNU coreutils only); shasum -a 256 is the BSD/macOS
-  # tool. Same fallback pattern as fetch_rootfs.sh/fetch_imagebuilder.sh.
+  # macOS には sha256sum（GNU coreutils のみ）がないため、BSD/macOS の
+  # shasum -a 256 を使う。fetch_rootfs.sh/fetch_imagebuilder.sh と同じフォールバック。
   hash=$(shasum -a 256 "$tmp" 2>/dev/null | awk '{print $1}' || sha256sum "$tmp" | awk '{print $1}')
   version=${2:-"$(date +%Y%m%d_%H%M%S)_$(printf '%s' "$hash" | cut -c1-8)"}
   url="${BRAINWRT_REGISTRY_URL:?"BRAINWRT_REGISTRY_URL not set"}/bundles/$name/$version"

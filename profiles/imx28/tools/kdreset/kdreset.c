@@ -1,21 +1,16 @@
-/* brainwrt-kdreset: resets /dev/tty0 to KD_TEXT mode.
+/* brainwrt-kdreset: /dev/tty0 を KD_TEXT モードへ戻す。
  *
- * Any bundle that puts the console into KD_GRAPHICS mode (to stop fbcon
- * from drawing text over its framebuffer output -- a bundle that draws
- * straight to the framebuffer typically does this in its own display
- * init) can be torn
- * down via brainwrt-ct's cmd_down, which prefers writing to the
- * container's cgroup.kill when present. That sends an uncatchable
- * SIGKILL to every process in the cgroup, so no in-process SIGTERM
- * handler or exit-path cleanup ever runs -- the tty is left stuck in
- * KD_GRAPHICS forever, even though the process that set it is gone.
+ * コンソールを KD_GRAPHICS モードにするバンドルは、brainwrt-ct の cmd_down で
+ * 終了できる（フレームバッファへ直接描画するバンドルは、fbcon が文字を重ねない
+ * よう表示初期化で設定することが多い）。cmd_down は cgroup.kill が
+ * あればそれへの書き込みを優先する。これは cgroup 内の全プロセスへ捕捉不能な
+ * SIGKILL を送るため、プロセス内の SIGTERM ハンドラや終了処理は実行されず、
+ * 設定したプロセスが消えても tty が KD_GRAPHICS のまま残ってしまう。
  *
- * This tiny helper is called unconditionally from cmd_down (host side,
- * not from inside any jail) after the cgroup is torn down, so the
- * console always comes back regardless of which bundle was running or
- * how its process was stopped. Setting KD_TEXT when the console is
- * already in KD_TEXT is a harmless no-op, so this is safe to run even
- * for bundles that never touched graphics mode.
+ * この小さなヘルパーは cgroup の破棄後、jail 内ではなく host 側で cmd_down から
+ * 無条件に呼ばれる。そのため、どのバンドルをどう停止した場合でも
+ * コンソールが戻る。既に KD_TEXT のコンソールへ KD_TEXT を設定しても無害な
+ * no-op なので、graphics mode に触れていないバンドルに対しても安全に呼べる。
  */
 #include <fcntl.h>
 #include <linux/kd.h>

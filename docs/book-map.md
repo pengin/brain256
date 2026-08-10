@@ -6,7 +6,7 @@
 
 | 節 | ファイル |
 |---|---|
-| 3.1 rootfs 借りてくる | `scripts/fetch_rootfs.sh`, `scripts/build_rootfs.sh` |
+| 3.1 rootfs 借りてくる | `Dockerfile`（ビルド用コンテナ `brainwrt-builder`）, `Makefile`（`docker-build` / `docker-rootfs`）, `scripts/fetch_rootfs.sh`, `scripts/build_rootfs.sh` |
 | 3.2 カーネルは自分で用意しない | `scripts/build_rootfs.sh`（kmod 除去）, `scripts/build_image.sh`（zImage/DTB のコピー） |
 | 3.3 SD カードにイメージを書き込む | `scripts/build_image.sh`, `Makefile`（`docker-image`）。この時点の説明は p1+p2 の 2 パーティション。データ用の p3 は 5.2 で足す |
 | 3.4 自作 Linux を起動する | `profiles/imx28/overlay/etc/banner`, `profiles/imx28/overlay/etc/config/system` |

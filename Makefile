@@ -1,19 +1,19 @@
 DOCKER_IMAGE=brainwrt-builder
 ROOTFS_VOLUME=brainwrt-rootfs
 PROFILE?=imx28
-# buildbrain's builder image carries the ARM cross toolchains that
-# build_image.sh needs (it rebuilds per-model U-Boot binaries).
+# buildbrain のビルダーイメージには build_image.sh が必要とする ARM
+# クロスツールチェーンが入っている（モデルごとの U-Boot バイナリを再ビルドする）。
 BUILDBRAIN_DOCKER_IMAGE=buildbrain-builder:local
 BUILDBRAIN?=../buildbrain
-# p1=boot(64M)+p2=rootfs(ROOTFS_PART_M, default 160M in build_image.sh)+
-# p3=data(残り全部)。オンデバイスに fdisk 相当のツールが無いので、初回ブートで
-# p3 を実カード容量まで拡張するのは brainwrt-data-grow が MBR を直接書いて行う。
+# p1=boot(64M)+p2=rootfs(ROOTFS_PART_M、build_image.sh の既定は 160M)+
+# p3=data(残り全部)。実機に fdisk 相当のツールがないため、初回ブートでは
+# brainwrt-data-grow が MBR を直接書き換え、p3 を実カード容量まで拡張する。
 IMG_SIZE_M?=4096
-# Which Brain models to build boot payloads for. Only sh3 by default
-# (the device on hand); full set: a7200 a7400 sh1..sh7.
+# 起動用 payload を作る Brain のモデル。既定は手元の実機である sh3 のみ。
+# 全モデルは a7200 a7400 sh1..sh7。
 BRAIN_MODELS?=sh3
 
-# Pin the OpenWrt release; bump deliberately and re-test on target.
+# OpenWrt のリリースを固定する。更新時は意図的に変更し、実機で再テストする。
 export OPENWRT_VERSION?=24.10.7
 export OPENWRT_DONOR_PROFILE?=i2se_duckbill
 
@@ -29,11 +29,14 @@ fetch-ib:
 docker-build:
 	docker build --platform linux/amd64 -t $(DOCKER_IMAGE) -f Dockerfile .
 
-# Extract the rootfs partition from the donor SD image, drop kernel
-# modules (our kernel is linux-brain, not OpenWrt's), apply the profile
-# overlay, and emit output/rootfs-$(PROFILE).tar. The rootfs tree lives
-# in a named volume: macOS bind mounts (APFS) cannot hold device nodes
-# or setuid bits, which silently breaks the rootfs.
+# donor SD イメージから rootfs パーティションを取り出し、OpenWrt のカーネル
+# モジュールを削除する（実際には linux-brain のカーネルを使うため）。profile の
+# overlay を適用して output/rootfs-$(PROFILE).tar を作る。rootfs のツリーは
+# bind mount したリポジトリではなく、必ず named volume に置く。Docker Desktop
+# のホスト共有は mknod (EPERM) を拒否し、uid/gid をホストへ保持しない。また、
+# 標準の APFS は大文字小文字を区別しない。これらは rootfs を静かに壊す。
+#（APFS でも setuid ビットは正常に保持され、問題ではない。）出力 tarball は
+# 属性を tar 内に持つため、bind mount 上に置いて安全である。
 .PHONY: docker-rootfs
 docker-rootfs: docker-volume-rm docker-volume-create docker-loop-clean
 	docker run --rm --platform linux/amd64 --privileged \
@@ -42,8 +45,8 @@ docker-rootfs: docker-volume-rm docker-volume-create docker-loop-clean
 		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
 		bash -lc "./scripts/build_rootfs.sh $(PROFILE)"
 
-# ImageBuilder flow: build the rootfs from profiles/*/packages.txt with
-# the overlay passed via FILES=, instead of extracting the donor image.
+# ImageBuilder 経路。donor イメージを取り出す代わりに、
+# profiles/*/packages.txt と FILES= で渡す overlay から rootfs を作る。
 .PHONY: docker-rootfs-ib
 docker-rootfs-ib: docker-volume-rm docker-volume-create docker-loop-clean
 	docker run --rm --platform linux/amd64 --privileged \
@@ -52,13 +55,13 @@ docker-rootfs-ib: docker-volume-rm docker-volume-create docker-loop-clean
 		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
 		bash -lc "./scripts/build_rootfs_imagebuilder.sh $(PROFILE)"
 
-# Reuse buildbrain's builder image: stage our rootfs tarball where
-# build_image.sh expects a rootfs directory, then let it assemble the SD
-# image (per-model U-Boot, nk.bin, partitioning) exactly like Brainux.
-# The kernel comes from linux-brain in the buildbrain tree — see 3.2.
-# SD イメージは output/rootfs-$(PROFILE).tar を焼き込む。overlay を直したのに
-# rootfs を組み直さないまま docker-image を回すと、古い rootfs のイメージが
-# 黙って出来上がる(実際にやった)。profiles/ のほうが新しければ止める。
+# buildbrain のビルダーイメージを再利用する。build_image.sh が rootfs ディレクトリを
+# 探す場所へ rootfs tarball を展開し、Brainux と同じ手順で（モデルごとの U-Boot、
+# nk.bin、パーティション分割）SD イメージを組み立てる。
+# カーネルは buildbrain ツリー内の linux-brain から取得する（3.2 参照）。
+# SD イメージは output/rootfs-$(PROFILE).tar を焼き込む。overlay を直した後に
+# rootfs を組み直さず docker-image を回すと、古い rootfs のイメージが黙って
+# 出来上がる（実際にやった）。profiles/ のほうが新しければ止める。
 .PHONY: check-rootfs-fresh
 check-rootfs-fresh:
 	@test -f output/rootfs-$(PROFILE).tar || { \
@@ -84,10 +87,9 @@ docker-image: check-rootfs-fresh docker-loop-clean
 			make -C nkbin_maker clean all && \
 			IMG_BUILD_JOBS=1 /brainwrt-scripts/build_image.sh brainwrt-rootfs sd_wrt.img $(IMG_SIZE_M)"
 
-# Loop devices are global to the Docker Desktop VM and leak when a
-# kpartx-using container dies before detaching; eight stale loops is
-# all it takes to break every later image build. Sweep them first.
-# (Safe only because our builds run serially.)
+# loop device は Docker Desktop VM 全体で共有される。kpartx を使うコンテナが
+# detach 前に終了すると残り、古い loop が 8 個あるだけで後続のイメージビルドが
+# すべて壊れるため、先に掃除する（ビルドを直列実行する場合だけ安全）。
 .PHONY: docker-loop-clean
 docker-loop-clean:
 	docker run --rm --platform linux/amd64 --privileged $(DOCKER_IMAGE) \

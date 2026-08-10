@@ -1,8 +1,8 @@
 #!/bin/bash
-# Extract the OpenWrt rootfs from the donor SD image and shape it into
-# the Brain rootfs tarball. Runs inside the brainwrt-builder container
-# (see Makefile docker-rootfs): needs --privileged for loop devices and
-# /work/rootfs on a Linux filesystem (named volume, never APFS).
+# donor SD イメージから OpenWrt の rootfs を取り出し、Brain 用 rootfs tarball に
+# 整形する。brainwrt-builder コンテナ内で実行する（Makefile の docker-rootfs 参照）。
+# loop device 用の --privileged と、Linux ファイルシステム上の /work/rootfs
+#（named volume、APFS ではない）が必要。
 set -uex -o pipefail
 
 PROFILE=${1:-imx28}
@@ -26,20 +26,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# --- 1. Mount the donor image's rootfs partition ---------------------------
+# --- 1. donor イメージの rootfs パーティションをマウント -----------------
 gunzip -c "${IMG_GZ}" > "${WORK}/donor.img"
 KPARTX_OUTPUT=$(kpartx -av "${WORK}/donor.img")
 LOOPDEV=$(echo "${KPARTX_OUTPUT}" | sed -n 's/^add map \(loop[0-9]*\)p.*/\1/p' | head -n1)
 mkdir -p "${WORK}/p2"
 mount -o ro "/dev/mapper/${LOOPDEV}p2" "${WORK}/p2"
 
-# --- 2. Copy out the rootfs --------------------------------------------------
+# --- 2. rootfs を取り出す --------------------------------------------------
 rsync -a "${WORK}/p2/" "${ROOTFS}/"
 umount "${WORK}/p2"
 
-# --- 3. Adapt for Brain -------------------------------------------------------
-# The kernel is linux-brain's zImage (drivers built in), not OpenWrt's:
-# the bundled kernel modules can never load, so drop them.
+# --- 3. Brain 用に調整 ------------------------------------------------------
+# カーネルは OpenWrt のものではなく、ドライバを組み込んだ linux-brain の zImage
+# を使う。そのため同梱されたカーネルモジュールはロードできず、削除する。
 rm -rf "${ROOTFS}/lib/modules" "${ROOTFS}/boot"/*
 
 rsync -a "${PROFILE_DIR}/overlay/" "${ROOTFS}/"
@@ -50,7 +50,7 @@ IPK_CACHE="${REPO}/cache/data-grow-ipks"
 mkdir -p "${ROOTFS}/usr/share/brainwrt-data-grow"
 cp "${IPK_CACHE}"/*.ipk "${ROOTFS}/usr/share/brainwrt-data-grow/"
 
-# --- 4. Pack -------------------------------------------------------------------
+# --- 4. パッケージ化 --------------------------------------------------------
 mkdir -p "$(dirname "${OUT}")"
 bsdtar -cpf "${OUT}" -C "${ROOTFS}" .
 du -sh "${ROOTFS}" || true

@@ -14,19 +14,17 @@ import (
 //go:embed index.html
 var indexHTML []byte
 
-// Config holds the server's runtime configuration, loaded from environment
-// variables by loadConfig.
+// Config は loadConfig が環境変数から読み込むサーバー実行時設定を保持する。
 type Config struct {
 	ListenAddr string
 	DataDir    string
 	PushToken  string
 }
 
-// loadConfig reads LISTEN_ADDR, DATA_DIR, and PUSH_TOKEN via getenv
-// (os.Getenv in production, a stub in tests). LISTEN_ADDR defaults to
-// ":8080" and DATA_DIR to "./data" when unset. PUSH_TOKEN has no default:
-// loadConfig returns an error if it is empty, since an empty push token
-// would mean push requests are accepted unauthenticated.
+// loadConfig は getenv 経由で LISTEN_ADDR、DATA_DIR、PUSH_TOKEN を読む
+//（本番では os.Getenv、テストではスタブ）。未設定時の LISTEN_ADDR は
+// ":8080"、DATA_DIR は "./data"。PUSH_TOKEN に既定値はなく、空だと push
+// リクエストが認証なしで受け付けられるためエラーを返す。
 func loadConfig(getenv func(string) string) (Config, error) {
 	cfg := Config{
 		ListenAddr: getenv("LISTEN_ADDR"),
@@ -47,22 +45,22 @@ func loadConfig(getenv func(string) string) (Config, error) {
 
 var bundlePath = regexp.MustCompile(`^/bundles/([^/]+)/([^/]+)$`)
 
-// maxBundleBytes caps the size of a pushed bundle body. It is a package
-// var (not a const) so tests can lower it temporarily to exercise the
-// limit-exceeded path without allocating hundreds of megabytes.
+// maxBundleBytes は push されるバンドル本文の上限。数百 MB を確保せずに
+// 上限超過経路をテストできるよう、const ではなくテスト中に一時変更できる
+// package 変数にしている。
 var maxBundleBytes int64 = 512 * 1024 * 1024
 
-// Server implements http.Handler for brain-registry's HTTP surface: the
-// /bundles/{name}/{version} push/pull API, the JSON bundle listing at
-// /api/bundles, and the HTML viewer at /.
+// Server は brain-registry の HTTP インターフェースを実装する。
+// /bundles/{name}/{version} の push/pull API、/api/bundles の JSON 一覧、
+// / の HTML ビューアーを提供する。
 type Server struct {
 	storage   *Storage
 	pushToken string
 	mux       *http.ServeMux
 }
 
-// NewServer builds a Server with its routing table wired up. Use this
-// instead of a bare &Server{...} literal so the mux is always initialized.
+// NewServer はルーティングを設定済みの Server を構築する。mux が必ず初期化される
+// よう、&Server{...} のリテラルを直接使わずこちらを使う。
 func NewServer(storage *Storage, pushToken string) *Server {
 	s := &Server{storage: storage, pushToken: pushToken}
 	mux := http.NewServeMux()
@@ -77,9 +75,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
-// serveBundles is the /bundles/{name}/{version} push/pull dispatch. Its
-// behavior is unchanged from before this task -- only how it's reached
-// (via the mux instead of being the top-level ServeHTTP) changed.
+// serveBundles は /bundles/{name}/{version} の push/pull を振り分ける。
+// 以前からの挙動は変えず、トップレベルの ServeHTTP から mux 経由で呼ぶ形に変更
+// している。
 func (s *Server) serveBundles(w http.ResponseWriter, r *http.Request) {
 	m := bundlePath.FindStringSubmatch(r.URL.Path)
 	if m == nil {
@@ -98,14 +96,14 @@ func (s *Server) serveBundles(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleIndex serves the embedded static HTML viewer page.
+// handleIndex は埋め込み済みの静的 HTML ビューアーページを返す。
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(indexHTML)
 }
 
-// handleListBundles serves the JSON bundle/version listing consumed by the
-// HTML viewer's <script>. Unauthenticated, matching the pull policy.
+// handleListBundles は HTML ビューアーの <script> が使うバンドル／バージョン
+// 一覧 JSON を返す。pull と同じ方針で認証は要求しない。
 func (s *Server) handleListBundles(w http.ResponseWriter, r *http.Request) {
 	bundles, err := s.storage.List()
 	if err != nil {
@@ -153,8 +151,8 @@ func (s *Server) handlePull(w http.ResponseWriter, name, version string) {
 	w.Write(data)
 }
 
-// writeStorageError maps a Storage error to the appropriate HTTP status:
-// ErrNotFound -> 404, *validationError -> 400, anything else -> 500.
+// writeStorageError は Storage のエラーを HTTP ステータスへ変換する。
+// ErrNotFound は 404、*validationError は 400、それ以外は 500 にする。
 func writeStorageError(w http.ResponseWriter, err error) {
 	if errors.Is(err, ErrNotFound) {
 		http.Error(w, "not found", http.StatusNotFound)

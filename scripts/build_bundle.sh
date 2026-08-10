@@ -1,22 +1,21 @@
 #!/bin/bash
-# Build a bundle's binary payload: install bundles/<name>/packages.txt
-# via the OpenWrt ImageBuilder's opkg into an offline-root staging
-# tree, then merge the resulting usr/bin, usr/lib, lib, usr/sbin into
-# bundles/<name>/root/ (existing overlay files such as webcam-run,
-# index.html, manifest.conf are untouched -- opkg only ever adds under
-# usr/ and lib/).
+# バンドルのバイナリ本体を作る。bundles/<name>/packages.txt の内容を
+# OpenWrt ImageBuilder の opkg で offline-root のステージング領域へインストールし、
+# 生成された usr/bin、usr/lib、lib、usr/sbin を bundles/<name>/root/ へ統合する。
+# webcam-run、index.html、manifest.conf などの既存オーバーレイは変更しない
+#（opkg が追加するのは usr/ と lib/ 以下だけ）。
 #
-# The ImageBuilder's own opkg (staging_dir/host/bin/opkg) is an
-# x86_64 Linux binary (a wrapper script that exec's a bundled
-# ld-linux-x86-64.so.2 + .opkg.bin) -- it cannot run on macOS, so the
-# opkg calls run inside `docker run --platform linux/amd64` against
-# buildbrain-builder:local (already used by the other brainwrt build
-# scripts and confirmed to have outbound network access, which opkg
-# needs to fetch fswebcam + deps from downloads.openwrt.org).
+# ImageBuilder 同梱の opkg（staging_dir/host/bin/opkg）は x86_64 Linux
+# バイナリ（同梱の ld-linux-x86-64.so.2 と .opkg.bin を実行するラッパー）で、
+# macOS では動かない。そのため opkg の処理は、他の brainwrt ビルドでも使う
+# buildbrain-builder:local に対する `docker run --platform linux/amd64` の中で
+# 実行する。このイメージは外部ネットワークに接続でき、opkg が
+# downloads.openwrt.org から fswebcam と依存パッケージを取得できることを
+# 確認済みである。
 #
-# Extraction of the cached ImageBuilder tarball and the opkg staging
-# root both happen in a throwaway scratch dir (mktemp -d), never in
-# the repo tree.
+# キャッシュ済み ImageBuilder の tarball と opkg のステージング root は
+# どちらも一時 scratch ディレクトリ（mktemp -d）内で扱い、リポジトリの
+# ツリーは直接変更しない。
 set -ueo pipefail
 
 name="${1:?usage: build_bundle.sh <name>}"
@@ -24,7 +23,7 @@ name="${1:?usage: build_bundle.sh <name>}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 bdir="${REPO_ROOT}/bundles/${name}"
 [ -f "${bdir}/packages.txt" ] || { echo "no ${bdir}/packages.txt" >&2; exit 1; }
-pkgs="$(grep -vE '^\s*#|^\s*$' "${bdir}/packages.txt" | tr '\n' ' ')"
+pkgs="$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "${bdir}/packages.txt" | tr '\n' ' ')"
 [ -n "${pkgs}" ] || { echo "error: ${bdir}/packages.txt has no packages" >&2; exit 1; }
 
 VERSION="${OPENWRT_VERSION:-24.10.7}"
@@ -39,40 +38,38 @@ trap cleanup EXIT
 
 echo "build_bundle: scratch=${scratch}"
 
-# --- 1. Extract the cached ImageBuilder --------------------------------
-# The tarball is zstd-compressed; the buildbrain-builder container's
-# GNU tar (1.35, no zstd binary on PATH) can't decompress it, so this
-# runs on the host, where zstd/unzstd is available (Homebrew).
+# --- 1. キャッシュ済み ImageBuilder を展開 --------------------------------
+# tarball は zstd 圧縮されている。buildbrain-builder コンテナの GNU tar
+#（1.35、PATH に zstd がない）では展開できないため、zstd/unzstd が使える
+# ホスト側（Homebrew）で実行する。
 mkdir -p "${scratch}/ib"
 zstd -dc "${IB_TAR}" | tar -xf - -C "${scratch}/ib" --strip-components=1
 
-# --- 2. Sanitize repositories.conf for offline-root use ------------------
-# Two edits, both documented workarounds for running opkg standalone
-# (outside `make image`) with --offline-root:
-#   - drop the trailing "option check_signature": offline-root installs
-#     fail signature verification without the ImageBuilder's usign trust
-#     store set up; accepted workaround per the task brief.
-#   - drop "src imagebuilder file:packages": that path is relative to
-#     opkg's cwd (not the conf file) and points at IB's local/empty
-#     packages/ dir (a placeholder for user-added .ipks per its
-#     README) -- it only ever fails to resolve here and isn't needed to
-#     reach the real remote feeds.
+# --- 2. offline-root 用に repositories.conf を調整 -------------------------
+# --offline-root 付きで opkg を単独実行（`make image` の外で実行）するための
+# 既知の回避策を 2 つ適用する。
+#   - 末尾の「option check_signature」を削除する。ImageBuilder の usign
+#     信頼ストアを設定せずに offline-root へインストールすると署名検証に
+#     失敗するため。これは作業仕様で許容された回避策である。
+#   - 「src imagebuilder file:packages」を削除する。このパスは設定ファイル
+#     ではなく opkg の cwd 基準で解決され、IB の空の packages/（README では
+#     ユーザー追加 .ipk 用のプレースホルダー）を指すため、ここでは実フィード
+#     の解決を妨げるだけである。
 grep -v -e '^option check_signature' -e '^src imagebuilder' \
     "${scratch}/ib/repositories.conf" > "${scratch}/repositories.conf"
 
-# --- 3. Locate the arch and the ImageBuilder's bundled libc .ipk --------
-# opkg's dependency resolver requires a "libc" package to be resolvable
-# for essentially every target package (fswebcam, libgd, ... all
-# Depend: libc), but libc is deliberately NOT published in the remote
-# feeds for this target: it's specific to the ImageBuilder's own
-# toolchain build and ships pre-built inside the ImageBuilder tarball
-# itself (under build_dir/), because the base rootfs it assembles
-# already has libc built in. It's also already part of Brain's base
-# image (same OpenWrt release, donor-extracted) so this bundle doesn't
-# strictly need to ship it -- but it must be *installed into the opkg
-# offline-root* first so opkg's own dependency resolution is satisfied
-# for the real bundle packages. That's a harmless, dedup'd-by-overlay
-# no-op at runtime if the base image already has the same file.
+# --- 3. アーキテクチャと ImageBuilder 同梱の libc .ipk を探す --------------
+# opkg の依存解決では、ほぼすべての対象パッケージ（fswebcam、libgd など）が
+# `Depend: libc` を持つため、「libc」を解決可能にしておく必要がある。しかし、
+# このターゲットのリモートフィードには libc が意図的に公開されていない。
+# ImageBuilder 自身のツールチェーン用にビルドされた固有パッケージで、
+# ImageBuilder の tarball 内 build_dir/ にあらかじめ入っているためである。
+# 組み立てられるベース rootfs には libc が既に含まれており、Brain のベース
+# イメージ（同じ OpenWrt リリースから donor 抽出）にも存在するので、実行時に
+# このバンドルが libc を持つ必要はない。それでも実際のバンドルパッケージの
+# 依存解決を成立させるため、まず opkg の offline-root へインストールする。
+# 実行時にはオーバーレイで重複排除されるため、同じファイルがベースにあれば
+# 実質的に無害な no-op になる。
 arch_packages="$(sed -n 's/^CONFIG_TARGET_ARCH_PACKAGES="\(.*\)"$/\1/p' "${scratch}/ib/.config")"
 [ -n "${arch_packages}" ] || { echo "error: could not determine CONFIG_TARGET_ARCH_PACKAGES from IB .config" >&2; exit 1; }
 
@@ -80,7 +77,7 @@ libc_ipk="$(find "${scratch}/ib/build_dir" -iname 'libc_*.ipk' | head -1)"
 [ -n "${libc_ipk}" ] || { echo "error: no libc_*.ipk found under ${scratch}/ib/build_dir" >&2; exit 1; }
 cp "${libc_ipk}" "${scratch}/libc.ipk"
 
-# --- 4. Run opkg (offline-root) inside the linux/amd64 builder container ---
+# --- 4. linux/amd64 ビルダーコンテナ内で opkg（offline-root）を実行 --------
 mkdir -p "${scratch}/stage/tmp"
 docker run --rm --platform linux/amd64 \
     -e ARCH_PACKAGES="${arch_packages}" \
@@ -92,14 +89,14 @@ docker run --rm --platform linux/amd64 \
         OPKG=/scratch/ib/staging_dir/host/bin/opkg
         OPTS="--offline-root /scratch/stage --conf /scratch/repositories.conf --add-arch all:100 --add-arch ${ARCH_PACKAGES}:200 --add-dest root:/"
         $OPKG $OPTS update
-        # Bootstrap libc from the ImageBuilder-local .ipk (see step 3);
-        # installed by path, so it does not need to resolve through the
-        # (feedless) local repo.
+        # ImageBuilder 内の .ipk から libc を初期導入する（手順 3 参照）。
+        # パスを直接指定してインストールするため、（フィードのない）ローカル
+        # リポジトリ経由で解決する必要はない。
         $OPKG $OPTS install /scratch/libc.ipk
         $OPKG $OPTS install ${PKGS}
     '
 
-# --- 5. Merge the staged binaries into the bundle overlay -----------------
+# --- 5. ステージングしたバイナリをバンドルのオーバーレイへ統合 ------------
 mkdir -p "${bdir}/root"
 for sub in usr/bin usr/lib lib usr/sbin; do
     if [ -d "${scratch}/stage/${sub}" ]; then

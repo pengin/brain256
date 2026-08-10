@@ -1,8 +1,8 @@
 #!/bin/sh
-# brainwrt-ct down が、cgroup を落とした後に brainwrt-kdreset (KD_TEXT
-# へのコンソールリセット) を必ず呼ぶことを検証する。cgroup.kill が「有る」
-# 場合/「無い」場合の両方、および kdreset 自体が失敗しても down 自体は
-# 成功することを、KDRESET をスタブして確認する。実 /dev/tty0 は使わない。
+# brainwrt-ct down が、cgroup を落とした後に brainwrt-kdreset（KD_TEXT への
+# コンソールリセット）を必ず呼ぶことを検証する。cgroup.kill が「有る」場合／
+#「無い」場合の両方、および kdreset 自体が失敗しても down 自体は成功することを、
+# KDRESET をスタブして確認する。実 /dev/tty0 は使わない。
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 CT="$here/../../profiles/imx28/overlay/usr/sbin/brainwrt-ct"
@@ -14,8 +14,8 @@ stub=$(mktemp -d)
 fail=0
 must() { "$@" || { echo "FAILED: $*"; fail=1; }; }
 
-# ダウン対象の登録済みバンドルを1つ用意 (up はしない -- down はプロセスが
-# 無くても cgroup ディレクトリの掃除 + kdreset 呼び出しをそのまま行う)
+# ダウン対象の登録済みバンドルを 1 つ用意する（up はしない。down はプロセスが
+# なくても cgroup ディレクトリの掃除 + kdreset 呼び出しをそのまま行う）。
 src="$root/src"; mkdir -p "$src/root/usr/bin"
 printf 'exec="/usr/bin/foo"\nautostart="0"\n' > "$src/manifest.conf"
 echo '#!/bin/sh' > "$src/root/usr/bin/foo"

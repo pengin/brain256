@@ -13,6 +13,16 @@ VTRESET="${BRAINWRT_CT_VTRESET:-brainwrt-vtreset}"
 REAP_POLL="${BRAINWRT_CT_REAP_POLL:-1}"
 
 die() { echo "brainwrt-ct: $*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "missing command: $1"; }
+
+# バンドル名をパスへ連結する前に検証する。レジストリ側の検証だけに依存すると、
+# ローカル install や手入力した pull 引数から ../ が入り、$APPS の外へ書き込めてしまう。
+check_name() {
+  case "$1" in
+    ''|.|..|*[!A-Za-z0-9._-]*) die "invalid bundle name: $1" ;;
+  esac
+}
+
 # dry-run 対応の実行ヘルパ
 run() { if [ "$DRY" = 1 ]; then echo "+ $*"; else "$@"; fi; }
 # cgroup ファイル書き込み(dry-run 時はエコー)
@@ -47,17 +57,44 @@ cpu_stat_field() { awk -v k="$2" '$1==k{print $2}' "$1/cpu.stat" 2>/dev/null; }
 mf_val() { # mf_val <name> <key> : manifest から 1 値取得(key="v" / key=v 両対応)
   sed -n "s/^$2=\"\{0,1\}\([^\"]*\)\"\{0,1\}.*/\1/p" "$APPS/$1/manifest.conf" 2>/dev/null | head -1
 }
-# cgroup.procs は sysfs 上、中身があっても stat サイズ 0 を返すため [ -s ] は使えない。
-# 実際に 1 行(PID)読めるかで稼働判定する。
+# cgroup.procs は sysfs 上にあり、中身があっても stat サイズ 0 を返すため [ -s ] は
+# 使えない。実際に 1 行（PID）読めるかで稼働判定する。
 has_procs() { [ -e "$1/cgroup.procs" ] && read -r _ < "$1/cgroup.procs" 2>/dev/null; }
 ct_up() { has_procs "$CGBASE/$1"; }
 ct_mounted() { grep -q " $APPS/$1/merged overlay " /proc/mounts 2>/dev/null; }
 
 load_manifest() {
-  name=$1; d="$APPS/$name"
+  name=$1; check_name "$name"; d="$APPS/$name"
   [ -f "$d/manifest.conf" ] || die "no manifest: $d/manifest.conf"
   exec=""; mem_max=""; cpu_max=""; devices=""; seccomp="default"; hostname="$name"; autostart="0"
-  . "$d/manifest.conf"
+  # manifest.conf は pull した tar に含まれる外部入力なので、シェルの source は
+  # 使わない。許可したキーの単純な代入だけを読み取り、任意のコマンド実行や
+  # 環境変数の書き換えを防ぐ。
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      ''|'#'*) continue ;;
+    esac
+    key=${line%%=*}
+    [ "$key" != "$line" ] || die "manifest: invalid line"
+    value=${line#*=}
+    case "$value" in
+      \"*\")
+        value=${value#\"}; value=${value%\"}
+        case "$value" in *\"*) die "manifest: unescaped quote" ;; esac
+        ;;
+      *\"*) die "manifest: invalid quoting" ;;
+    esac
+    case "$key" in
+      exec) exec=$value ;;
+      mem_max) mem_max=$value ;;
+      cpu_max) cpu_max=$value ;;
+      devices) devices=$value ;;
+      seccomp) seccomp=$value ;;
+      hostname) hostname=$value ;;
+      autostart) autostart=$value ;;
+      *) die "manifest: unknown key: $key" ;;
+    esac
+  done < "$d/manifest.conf"
   [ -n "$exec" ] || die "manifest: exec is empty"
 }
 
@@ -70,8 +107,8 @@ cmd_up() {
   # cgroup 作成＋コントローラ有効化＋上限
   cg="$CGBASE/$name"
   run mkdir -p "$cg"
-  # cgroup v2 はコントローラをルートから順に delegate する必要があるため、
-  # ルート階層でも best-effort で有効化しておく(失敗しても down-grade して続行)。
+  # cgroup v2 はコントローラをルートから順に delegate する必要があるため、ルート
+  # 階層でも best-effort で有効化しておく（失敗しても down-grade して続行）。
   [ "$DRY" = 1 ] || echo "+memory +cpu" > "$CGROOT/cgroup.subtree_control" 2>/dev/null || true
   [ "$DRY" = 1 ] || echo "+memory +cpu" > "$CGBASE/cgroup.subtree_control" 2>/dev/null || true
   [ -n "$mem_max" ] && cgset "$cg/memory.max" "$(to_bytes "$mem_max")"
@@ -91,31 +128,30 @@ cmd_up() {
     >"$d/log" 2>&1 &
   echo $! > "$RUN/$name.pid"
   echo "brainwrt-ct: up $name (pid $(cat "$RUN/$name.pid"))"
-  # Reaper: if the bundle's own process exits on its own (e.g. quitting
-  # neovim via :q, or a game's own in-game quit) rather than via
-  # `ct down`, nobody would otherwise run the teardown (overlay
-  # unmount, cgroup removal, KD_TEXT/VT reset) -- the console/VT would
-  # stay in whatever state the bundle left it, exactly like the
-  # neovim bundle's own console-takeover found on real hardware.
+  # Reaper。バンドル自身のプロセスが `ct down` ではなく自発的に終了した場合
+  #（neovim の :q やゲーム内の終了など）、通常は後始末（overlay の unmount、
+  # cgroup の削除、KD_TEXT/VT のリセット）を実行するものがいない。そのままでは、
+  # 実機で neovim バンドルのコンソール占有時に見つかった問題と同じく、バンドルが
+  # 残したコンソール／VT の状態が残ってしまう。
   reap_on_exit "$name" "$cg" &
 }
 
-# cmd_up の一部として起動する常駐ウォッチャ。cgroup.procs をポーリングし
-# (プロセス登録待ちを固定回数だけ待ってから空になるのを待つ -- `echo $$ >
-# cgroup.procs` がまだ実行される前の「もう down している」誤読を避ける)、
-# 実際に登録→消滅を観測できた場合にのみ cmd_down を自動で呼ぶ。`ct down`
-# が競合しても安全(cmd_down 自体は umount/rmdir 等すべて「既に無い」を
-# 許容する冪等な作り)。ポーリング間隔は BRAINWRT_CT_REAP_POLL で上書き可能
-# (テストで実秒待ちを避けるため)。
+# cmd_up の一部として常駐ウォッチャを起動する。cgroup.procs をポーリングし、
+# プロセス登録待ちを固定回数だけ行ってから空になるのを待つ。登録待ち中の
+# `echo $$ > cgroup.procs` より前に「もう down している」と誤読するのを避ける。
+# 実際に登録→消滅を観測できた場合にのみ cmd_down を自動で呼ぶ。`ct down` と
+# 競合しても安全（cmd_down 自体が umount/rmdir など「既にない」状態を許容する
+# 冪等な作り）。ポーリング間隔は BRAINWRT_CT_REAP_POLL で上書き可能
+#（テストで実秒待ちを避けるため）。
 reap_on_exit() { # reap_on_exit <name> <cg>
   rname=$1; rcg=$2
   tries=0
   while ! has_procs "$rcg" && [ "$tries" -lt 50 ]; do
     sleep "$REAP_POLL"; tries=$((tries + 1))
   done
-  # 登録そのものが一度も観測できなかった場合(dry-run/テスト環境で cgroup
-  # が実体を持たない、または起動が本当に壊れている場合)は何もしない --
-  # 実際の終了に対する反応ではなく、無条件の後始末になってしまうため。
+  # 登録そのものが一度も観測できなかった場合（dry-run／テスト環境で cgroup が
+  # 実体を持たない、または起動が本当に壊れている場合）は何もしない。実際の終了
+  # に対する反応ではなく、無条件の後始末になってしまうため。
   if has_procs "$rcg"; then
     while has_procs "$rcg"; do sleep "$REAP_POLL"; done
     cmd_down "$rname" >/dev/null 2>&1
@@ -123,34 +159,31 @@ reap_on_exit() { # reap_on_exit <name> <cg>
 }
 
 cmd_down() {
-  name=$1; d="$APPS/$name"; cg="$CGBASE/$name"; merged="$d/merged"
+  name=$1; check_name "$name"; d="$APPS/$name"; cg="$CGBASE/$name"; merged="$d/merged"
   if [ -f "$cg/cgroup.kill" ]; then run sh -c "echo 1 > '$cg/cgroup.kill'"; else
     [ -f "$cg/cgroup.procs" ] && for p in $(cat "$cg/cgroup.procs" 2>/dev/null); do run kill "$p" 2>/dev/null || true; done
   fi
   run umount "$merged" 2>/dev/null || true
   run rmdir "$cg" 2>/dev/null || true
   run rm -f "$RUN/$name.pid"
-  # cgroup.kill (used above when present) sends an uncatchable SIGKILL to
-  # every process in the cgroup, so a bundle that put the console into
-  # KD_GRAPHICS mode (a bundle that draws straight to the framebuffer)
-  # never gets a
-  # chance to run its own cleanup -- the tty is left stuck in graphics
-  # mode. Unconditionally reset it here; harmless no-op for bundles that
-  # never touched console mode, and best-effort (must never fail `down`).
+  # 上で使った cgroup.kill は、存在する場合 cgroup 内の全プロセスへ捕捉不能な
+  # SIGKILL を送る。そのためコンソールを KD_GRAPHICS にしたバンドル
+  #（フレームバッファへ直接描画するバンドル）は自分の後始末を実行できず、
+  # tty が graphics mode のまま残る。ここで無条件にリセットする。コンソール
+  # モードに触れていないバンドルには無害な no-op とし、best-effort で実行して
+  # `down` 自体を失敗させない。
   run "$KDRESET" 2>/dev/null || true
-  # Same reasoning for a bundle that switched the active VT away from
-  # tty1 (a bundle with a full-screen TUI, to avoid racing the login
-  # shell for keyboard input -- see profiles/imx28/tools/vtreset/vtreset.c).
-  # Unconditionally switch back; harmless no-op for bundles that never
-  # touched VT switching. Explicit "1" (not vtreset's own no-arg
-  # toggle behavior, meant for interactive use) since this must
-  # deterministically land on tty1 regardless of whatever VT happens
-  # to be active.
+  # アクティブ VT を tty1 から切り替えたバンドルにも同じ考え方を適用する
+  #（キーボード入力でログインシェルと競合しないよう全画面 TUI が使う。
+  # profiles/imx28/tools/vtreset/vtreset.c 参照）。無条件に戻し、VT を切り替えて
+  # いないバンドルには無害な no-op とする。インタラクティブ用の vtreset に引数を
+  # 渡さない toggle ではなく明示的に "1" を渡すのは、現在どの VT が active でも
+  # 確実に tty1 へ着地させる必要があるため。
   run "$VTRESET" 1 2>/dev/null || true
   echo "brainwrt-ct: down $name"
 }
 
-# 登録済みバンドル(=$APPS/*/manifest.conf を持つもの)を全て state 付きで一覧
+# 登録済みバンドル（=$APPS/*/manifest.conf を持つもの）をすべて state 付きで一覧
 cmd_list() {
   [ -d "$APPS" ] || { echo "(no apps dir: $APPS)"; return 0; }
   printf '%-12s %-5s %-4s %-4s %-15s %-8s %-7s %s\n' \
@@ -179,7 +212,7 @@ cmd_list() {
   [ "$found" = 1 ] || echo "(none registered)"
 }
 
-# 稼働中コンテナの CPU%/MEM% を interval 秒サンプルして 1 回表示(既定 1 秒)
+# 稼働中コンテナの CPU%/MEM% を interval 秒サンプルして 1 回表示（既定 1 秒）
 cmd_top() {
   interval="${1:-1}"
   [ -d "$CGBASE" ] || { echo "(no running containers)"; return 0; }
@@ -207,11 +240,11 @@ cmd_top() {
   rm -f "$snap"
 }
 
-cmd_logs() { name=$1; tail -n "${2:-20}" "$APPS/$name/log"; }
+cmd_logs() { name=$1; check_name "$name"; tail -n "${2:-20}" "$APPS/$name/log"; }
 
 # autostart フラグを manifest 内で切替(sed -i を避け temp+mv で BSD/GNU 両対応)
 set_autostart() { # set_autostart <name> <0|1>
-  n=$1; val=$2; f="$APPS/$n/manifest.conf"
+  n=$1; check_name "$n"; val=$2; f="$APPS/$n/manifest.conf"
   [ -f "$f" ] || die "not registered: $n"
   tmp="$f.tmp.$$"
   if grep -q '^autostart=' "$f"; then
@@ -224,16 +257,16 @@ set_autostart() { # set_autostart <name> <0|1>
 cmd_enable()  { set_autostart "$1" 1; echo "brainwrt-ct: enabled $1 (autostart on)"; }
 cmd_disable() { set_autostart "$1" 0; echo "brainwrt-ct: disabled $1 (autostart off)"; }
 
-# バンドルを $APPS/<name>/ に登録(src はディレクトリまたは tar)
+# バンドルを $APPS/<name>/ に登録する（src はディレクトリまたは tar）。
 cmd_install() {
-  name=${1:?"usage: install <name> <dir|tar>"}; src=${2:?"usage: install <name> <dir|tar>"}
+  name=${1:?"usage: install <name> <dir|tar>"}; check_name "$name"; src=${2:?"usage: install <name> <dir|tar>"}
   dst="$APPS/$name"
   [ -e "$dst" ] && die "already registered: $name (remove it first)"
   run mkdir -p "$dst"
   if [ -d "$src" ]; then run sh -c "cp -a \"$src/.\" \"$dst/\""
   elif [ -f "$src" ]; then
-    # 展開前にメンバー名を検査し、絶対パス/`..`要素を含むものを拒否する
-    # (BusyBox tar 自体は無害化するが、tar実装依存にしない防御多重化)。
+    # 展開前にメンバー名を検査し、絶対パス／`..` 要素を含むものを拒否する
+    #（BusyBox tar 自体は無害化するが、tar 実装依存にしない防御多重化）。
     if tar tf "$src" 2>/dev/null | grep -qE '(^/|(^|/)\.\.(/|$))'; then
       rm -rf "$dst"
       die "unsafe tar member path (absolute or '..') in: $src"
@@ -244,9 +277,9 @@ cmd_install() {
   echo "brainwrt-ct: installed $name"
 }
 
-# バンドルを登録解除($APPS/<name>/ 削除)。稼働中は --force で down してから
+# バンドルを登録解除する（$APPS/<name>/ を削除）。稼働中は --force で down してから
 cmd_remove() {
-  name=${1:?"usage: remove <name> [--force]"}; force=${2:-}
+  name=${1:?"usage: remove <name> [--force]"}; check_name "$name"; force=${2:-}
   d="$APPS/$name"; [ -d "$d" ] || die "not registered: $name"
   if ct_up "$name" || ct_mounted "$name"; then
     [ "$force" = --force ] || die "$name is up (or overlay still mounted); run 'down $name' first or pass --force"
@@ -258,39 +291,46 @@ cmd_remove() {
   echo "brainwrt-ct: removed $name"
 }
 
-# レジストリからバンドルを取得し登録する。既に同名バンドルが登録済みなら
-# down してから入れ替える(pull 自体は入れ替え後に自動 up しない)。
+# レジストリからバンドルを取得して登録する。既に同名バンドルが登録済みなら
+# down してから入れ替える（pull 自体は入れ替え後に自動 up しない）。
 cmd_pull() {
-  # 注意: このスクリプトに local 宣言は無く、name/dst 等は全関数共有のグロー
-  # バル変数。cmd_install/cmd_down を呼ぶと内部で name が書き換わってしまう
-  # ため、対象名は pull_name/staging という専用変数に保持し、以後 $name は
-  # 参照しない。
-  pull_name=${1:?"usage: pull <name> [version]"}; version=${2:-latest}
+  # 注意: このスクリプトには local 宣言がなく、name/dst などは全関数で共有する
+  # グローバル変数である。cmd_install/cmd_down を呼ぶと内部で name が書き換わる
+  # ため、対象名は pull_name/staging という専用変数に保持し、以後 $name は参照しない。
+  pull_name=${1:?"usage: pull <name> [version]"}; check_name "$pull_name"
+  version=${2:-latest}
+  case "$version" in
+    ''|.|..|*[!A-Za-z0-9._-]*) die "invalid bundle version: $version" ;;
+  esac
+  need wget
   url="${BRAINWRT_CT_REGISTRY_URL:?"BRAINWRT_CT_REGISTRY_URL not set"}/bundles/$pull_name/$version"
-  tmp="${TMPDIR:-/tmp}/brainwrt-ct-pull-$pull_name.$$"
+  # 一時ファイル名に pull_name を含めない。レジストリが許可する最大長の
+  # バンドル名でも、ファイル名自体が NAME_MAX を超えないようにする。
+  tmp=$(mktemp "${TMPDIR:-/tmp}/brainwrt-ct-pull-XXXXXX")
   staging=""
-  # staging はまだ計算前(=空文字)のことがあり、cmd_install 内の tar 展開失敗
-  # 等で trap がその状態で発火しても set -u で落ちないよう先に初期化しておく。
+  # staging はまだ計算前（=空文字）のことがある。cmd_install 内の tar 展開失敗などで
+  # trap がその状態で発火しても set -u で落ちないよう、先に初期化しておく。
   # 末尾の true は cleanup 自体の失敗が本来の exit status を隠さないため。
   #
-  # staging_cleanup は「staging を計算した直後 〜 cmd_install が成功して
-  # 戻るまで」の間だけ 1 にする専用フラグ。cmd_install 成功後は staging は
-  # 検証済みの正規バンドルであり、それ以降(旧バンドルの down/rm や最終 mv)
-  # がどこで失敗しても trap は staging を消してはいけない
-  # (壊れた入れ替えを手動復旧できるよう残す)。0 で初期化するのは、trap 発火時
-  # に staging_cleanup が未定義だと set -u で落ちるため。
+  # staging_cleanup は「staging を計算した直後から cmd_install が成功して戻るまで」の
+  # 間だけ 1 にする専用フラグ。cmd_install 成功後は staging が検証済みの正規バンドル
+  # なので、それ以降（旧バンドルの down/rm や最終 mv）がどこで失敗しても trap は
+  # staging を消してはいけない（壊れた入れ替えを手動復旧できるよう残す）。0 で初期化
+  # するのは、trap 発火時に staging_cleanup が未定義だと set -u で落ちるため。
   staging_cleanup=0
   trap 'rm -f "$tmp"; [ "$staging_cleanup" = 1 ] && run rm -rf "$APPS/$staging" 2>/dev/null; true' EXIT
   wget -O "$tmp" "$url" || die "pull failed: $url"
   [ -s "$tmp" ] || die "pull failed: empty response from $url"
-  # まず staging 名で検証込みインストール(manifest.conf 欠損等は cmd_install が
-  # die してくれる)。ここで失敗しても既存の $APPS/$pull_name は一切触れていない。
-  staging="$pull_name.pull.$$"
+  # まず staging 名で検証込みインストールする（manifest.conf 欠損などは cmd_install が
+  # die する）。ここで失敗しても既存の $APPS/$pull_name は一切触れていない。
+  # staging 名にも pull_name を含めない。長い（最大 255 文字の）正規名でも staging
+  # ディレクトリの名前が NAME_MAX を超えないようにする。
+  staging=".brainwrt-ct-pull-$$"
   staging_cleanup=1
   cmd_install "$staging" "$tmp"
-  # cmd_install はここまで来た時点で成功が確定している(失敗時は内部で die
-  # して EXIT trap 経由でこの関数を抜ける)。staging は検証済み正規バンドル
-  # になったので、以降は trap の cleanup 対象から外す。
+  # cmd_install はここまで来た時点で成功が確定している（失敗時は内部で die して
+  # EXIT trap 経由でこの関数を抜ける）。staging は検証済み正規バンドルになったので、
+  # 以降は trap の cleanup 対象から外す。
   staging_cleanup=0
   if [ -d "$APPS/$pull_name" ]; then
     cmd_down "$pull_name" 2>/dev/null || true

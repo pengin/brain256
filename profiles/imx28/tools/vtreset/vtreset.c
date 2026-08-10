@@ -1,47 +1,33 @@
-/* brainwrt-vtreset: switches the active VT.
+/* brainwrt-vtreset: アクティブな VT を切り替える。
  *
- * Any bundle that switches the physical keyboard/display over to a
- * dedicated VT (a full-screen TUI bundle typically activates
- * /dev/tty2 so its own console-takeover doesn't race the interactive
- * login shell on tty1 for keyboard input -- both /dev/console and
- * /dev/tty0 alias to "whichever VT is currently active", and the
- * pre-existing login/ash session on tty1 holds /dev/console open
- * without a controlling terminal at all, so it can't be dislodged by
- * TIOCSCTTY alone) can be torn down via brainwrt-ct's cmd_down, which
- * prefers writing to the container's cgroup.kill when present. That
- * sends an uncatchable SIGKILL to every process in the cgroup, so no
- * in-process cleanup (including switching the active VT back) ever
- * runs.
+ * 物理キーボード／ディスプレイを専用 VT へ切り替えるバンドルは、brainwrt-ct の
+ * cmd_down で終了できる。全画面 TUI バンドルは、コンソールを占有して tty1 の
+ * 対話ログインシェルとキーボード入力が競合しないよう、通常 /dev/tty2 をアクティブ
+ * にする。/dev/console と /dev/tty0 は「現在アクティブな VT」
+ * の別名であり、既存の tty1 の login/ash セッションは controlling terminal
+ * なしに /dev/console を open しているため、TIOCSCTTY だけでは追い出せない。
+ * cmd_down は cgroup.kill があればそこへの書き込みを優先し、cgroup 内の全
+ * プロセスへ捕捉不能な SIGKILL を送るので、アクティブ VT を戻す終了処理も
+ * 実行されない。
  *
- * With an explicit argument, this switches to that VT deterministically
- * -- cmd_down always calls `brainwrt-vtreset 1` explicitly (host side,
- * not from inside any jail) after the cgroup is torn down, so the
- * physical console always returns to tty1 (where procd's askconsole
- * login session lives) regardless of which bundle was running or how
- * its process was stopped, or what VT happens to be active at that
- * moment. Switching to tty1 when tty1 is already active is a harmless
- * no-op, so this is safe to run even for bundles that never touched VT
- * switching.
+ * 引数を明示すると、その VT へ決定的に切り替える。cmd_down は cgroup 破棄後、
+ * jail 内ではなく host 側で常に `brainwrt-vtreset 1` を呼ぶため、どのバンドルを
+ * どう停止した場合でも、物理コンソールは procd の askconsole
+ * login セッションがある tty1 へ戻る。その時点で tty1 が既にアクティブでも
+ * 無害な no-op なので、VT を切り替えていないバンドルに対しても安全に呼べる。
  *
- * With NO argument, this instead *toggles* between tty1 and tty2 based
- * on whichever is currently active (VT_GETSTATE) -- meant for a TUI
- * bundle to bind to a "suspend" key (switching away from tty2 when the
- * bundle has no real job-control supervisor to suspend to) and,
- * symmetrically, for the
- * shell on tty1 to switch back: the same no-argument command works
- * from either side without needing to remember which VT number to
- * pass. Any *other* currently-active VT toggles to tty1 (a safe
- * default rather than guessing).
+ * 引数なしでは、VT_GETSTATE で現在の VT を確認して tty1 と tty2 を *toggle* する。
+ * これは TUI バンドルの「suspend」キー（実際に suspend 先となる job control
+ * supervisor がないときに tty2 から離れる）と、tty1 のシェルからの
+ * 戻しを想定したもの。どちら側からも VT 番号を覚えずに同じコマンドを使える。
+ * 現在の VT がそれ以外なら、推測せず安全側として tty1 へ切り替える。
  *
- * The device this opens to issue the ioctls (/dev/tty2, not /dev/tty0)
- * is deliberately chosen so this same binary works both from cmd_down
- * (bare host, every VT device is accessible) and from *inside* the
- * neovim bundle's own jail (where only /dev/tty2 is staged via
- * ct.devices -- /dev/tty0 is not, since only /dev/tty2 was ever added
- * to the manifest). VT_ACTIVATE/VT_WAITACTIVE/VT_GETSTATE are global
- * VT-subsystem operations, issuable via any currently-open VT device
- * fd regardless of which specific VT it refers to, so this works for
- * both callers.
+ * ioctl 用に開くデバイスを /dev/tty0 ではなく /dev/tty2 としているのは意図的で
+ * ある。cmd_down（bare host、全 VT デバイスにアクセス可能）と neovim バンドル
+ * 自身の jail（ct.devices で /dev/tty2 だけを渡す。manifest に追加したのが
+ * /dev/tty2 だけなので /dev/tty0 はない）の両方で同じバイナリを使えるようにする
+ * ためである。VT_ACTIVATE/VT_WAITACTIVE/VT_GETSTATE は VT サブシステム全体に
+ * 対する操作で、どの VT を指す fd でも発行できるため、両方の呼び出し元で動く。
  */
 #include <fcntl.h>
 #include <linux/vt.h>

@@ -1,15 +1,13 @@
 #!/bin/sh /etc/rc.common
-# Stub override for hostapd-common's stock /etc/init.d/wpad (pulled in
-# automatically as a wpa-supplicant-mini dependency, enabled by default).
-# That service starts a global wpa_supplicant instance
-# (-g /var/run/wpa_supplicant/global) meant to be driven by netifd via
-# /etc/config/wireless. This project has no netifd wireless config and
-# manages wlan0 manually (see /usr/sbin/brainwrt-wifi-connect); running
-# both at once puts two wpa_supplicant processes on the same nl80211
-# interface, which was observed to cause a periodic deauth/reauth loop
-# and the interface never getting a stable DHCP lease. Left as a stub
-# (rather than removed) so `/etc/init.d/wpad enable` from a future
-# package update doesn't silently resurrect the conflict.
+# hostapd-common の標準 /etc/init.d/wpad に対する上書きスタブ
+#（wpa-supplicant-mini の依存関係として自動的に入り、既定で有効になる）。
+# このサービスは netifd が /etc/config/wireless 経由で制御するグローバルな
+# wpa_supplicant（-g /var/run/wpa_supplicant/global）を起動する。しかしこのプロジェクト
+# には netifd の無線設定がなく、wlan0 は手動管理する
+#（/usr/sbin/brainwrt-wifi-connect 参照）。両方を動かすと同じ nl80211
+# インターフェース上で wpa_supplicant が 2 つ動き、周期的な deauth/reauth ループと
+# DHCP リースの不安定化が起きることを確認した。スタブとして残すのは、
+# 将来のパッケージ更新で `/etc/init.d/wpad enable` が競合を黙って復活させないため。
 START=19
 STOP=21
 

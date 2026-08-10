@@ -1,6 +1,6 @@
 #!/bin/bash
-# Fetch the OpenWrt ImageBuilder for mxs/generic into cache/ and verify
-# its sha256 against the release checksum list.
+# mxs/generic 用 OpenWrt ImageBuilder を cache/ に取得し、リリースが公開する
+# チェックサム一覧で sha256 を検証する。
 set -ueo pipefail
 
 VERSION="${OPENWRT_VERSION:-24.10.7}"

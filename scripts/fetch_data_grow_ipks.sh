@@ -1,26 +1,24 @@
 #!/bin/bash
-# Fetch the resize2fs dependency closure for arm_arm926ej-s from the OpenWrt
-# release feeds into cache/, verified against each feed's Packages index
-# SHA256sum. Used by brainwrt-data-grow (on-device p3 resize) to grow /data
-# to the real SD card's capacity at first boot without needing fdisk/sfdisk
-# -- see profiles/imx28/overlay/etc/init.d/brainwrt-data-grow.
+# arm_arm926ej-s 用 resize2fs の依存関係一式を OpenWrt リリースフィードから
+# cache/ へ取得し、各フィードの Packages インデックスにある SHA256sum で検証する。
+# brainwrt-data-grow が初回ブート時に fdisk/sfdisk なしで /data を実 SD カード容量
+# まで拡張するために使う（profiles/imx28/overlay/etc/init.d/brainwrt-data-grow 参照）。
 #
-# Two feeds are needed: most packages live in the generic per-arch "base"
-# feed, but musl's librt is only published in the target-specific "core"
-# feed (confirmed on real PW-SH3 hardware: opkg reported "cannot find
-# dependency librt" when only the base-feed closure was installed, even
-# though librt isn't listed under packages/arm_arm926ej-s/base at all).
-# resize2fs itself is also a separate
-# package from e2fsprogs (OpenWrt splits each e2fsprogs binary into its
-# own ipk; the main e2fsprogs package only ships mkfs/fsck/e2fsck).
+# 2 つのフィードが必要。大半のパッケージはアーキテクチャ共通の「base」フィードに
+# あるが、musl の librt はターゲット固有の「core」フィードにしか公開されていない
+#（実機 PW-SH3 で、base フィードだけの依存関係を入れると opkg が
+#「cannot find dependency librt」と報告することを確認済み。そもそも librt は
+# packages/arm_arm926ej-s/base に掲載されていない）。resize2fs も e2fsprogs とは
+# 別パッケージである（OpenWrt は e2fsprogs の各バイナリを個別 ipk に分割し、
+# e2fsprogs 本体には mkfs/fsck/e2fsck だけが入る）。
 set -ueo pipefail
 
 VERSION="${OPENWRT_VERSION:-24.10.7}"
 BASE_URL="https://downloads.openwrt.org/releases/${VERSION}/packages/arm_arm926ej-s/base"
 CORE_URL="https://downloads.openwrt.org/releases/${VERSION}/targets/mxs/generic/packages"
 
-# Pinned filenames (version-locked; bump deliberately and re-verify against
-# the feed if OPENWRT_VERSION changes).
+# ファイル名を固定する（バージョンに依存するため、OPENWRT_VERSION を変更するときは
+# 意図的に更新し、フィードに対して再検証する）。
 BASE_PACKAGES="
 e2fsprogs_1.47.0-r2_arm_arm926ej-s.ipk
 resize2fs_1.47.0-r2_arm_arm926ej-s.ipk
