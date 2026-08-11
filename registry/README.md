@@ -1,58 +1,44 @@
 # brain-registry
 
-A minimal HTTP registry for `brainwrt-ct` bundle tarballs: push from a
-build machine (token-authenticated), pull from anywhere reachable on the
-network (no auth). Single static Go binary, filesystem storage, no
-database, no third-party dependencies.
+`brainwrt-ct` のバンドル tar アーカイブを配布する、最小構成の HTTP レジストリです。ビルドマシンからはトークン認証付きで送信でき、ネットワークから到達可能な場所からは認証なしで取得できます。`brain-registry` は単一の静的 Go バイナリとして動作し、データをファイルシステムに保存します。データベースや外部依存は必要ありません。
 
 ## API
 
-- `PUT /bundles/{name}/{version}` — body is the bundle tar. Requires
-  `Authorization: Bearer <PUSH_TOKEN>`. `{version}` may not literally be
-  `"latest"` (that string is reserved for GET-time resolution).
-- `GET /bundles/{name}/{version}` — returns the tar. `{version}` may be
-  `latest` to fetch the most recently pushed version for that name.
-- `GET /api/bundles` — no auth. JSON listing of every registered bundle:
-  `{"<name>": {"versions": [...], "latest": "..."}}`, versions sorted
-  alphabetically. Returns `{}` if nothing has been pushed yet.
-- `GET /` — no auth. A self-contained HTML page (embedded in the binary)
-  that fetches `/api/bundles` and renders it as a table, with each version
-  linking to its `GET /bundles/{name}/{version}` download.
+- `PUT /bundles/{name}/{version}` — リクエスト本文としてバンドルの tar アーカイブを受け取ります。`Authorization: Bearer <PUSH_TOKEN>` ヘッダーが必要です。`{version}` に文字列 `"latest"` は指定できません。`latest` は GET リクエストで最新版を取得するために予約されています。
++ `GET /bundles/{name}/{version}` — バンドルの tar アーカイブを返します。`{version}` に `latest` を指定すると、その名前で最後に送信されたバージョンを取得します。
++ `GET /api/bundles` — 認証は不要です。登録済みバンドルを JSON で一覧表示します。形式は `{"<name>": {"versions": [...], "latest": "..."}}` で、バージョンは辞書順に並びます。まだ何も送信されていない場合は `{}` を返します。
+- `GET /` — 認証は不要です。バイナリに埋め込まれた自己完結型の HTML ページを返します。このページは `/api/bundles` を取得して一覧表を表示し、各バージョンから対応する `GET /bundles/{name}/{version}` のダウンロード URL にリンクします。
 
-`{name}`/`{version}` must match `^[A-Za-z0-9._-]+$` and may not be `.` or
-`..`.
+`{name}` と `{version}` は `^[A-Za-z0-9._-]+$` に一致しなければならず、`.` と `..` は指定できません。
 
-## Configuration (environment variables)
+## 設定（環境変数）
 
-| Variable | Default | Notes |
+| 変数 | 既定値 | 備考 |
 |---|---|---|
 | `LISTEN_ADDR` | `:8080` | |
-| `DATA_DIR` | `./data` | created on startup if missing |
-| `PUSH_TOKEN` | *(none)* | **required** — the process refuses to start if unset |
+| `DATA_DIR` | `./data` | 存在しない場合は起動時に作成します |
+| `PUSH_TOKEN` | *(なし)* | **必須**。未設定の場合、プロセスは起動しません |
 
-## Build
+## ビルド
 
 ```sh
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o brain-registryd .
 ```
 
-(swap `GOARCH` for the deploy target's architecture, e.g. `arm64`)
+`GOARCH` は配置先のアーキテクチャに置き換えます（例: `arm64`）。
 
-## Run
+## 起動
 
 ```sh
 PUSH_TOKEN=<token> DATA_DIR=/var/lib/brain-registry ./brain-registryd
 ```
 
-See `deploy/brain-registry.service` for a systemd unit example. TLS
-termination and any remote-access story (e.g. Tailscale) are out of scope
-for this server — it speaks plain HTTP only; put a proxy or tailnet in
-front of it if needed.
+systemd ユニットの例は `deploy/brain-registry.service` を参照してください。TLS の復号を行うリバースプロキシや、Tailscale などのプライベートネットワークを使った外部アクセスの構成は、このサーバーの対象外です。このサーバーは平文 HTTP のみを提供するため、必要に応じて前段にリバースプロキシやプライベートネットワークを置いてください。
 
-## Smoke test
+## 動作確認
 
 ```sh
-curl -X PUT --data-binary @bundle.tar -H "Authorization: Bearer $TOKEN" \
+curl -X PUT --data-binary @bundle.tar -H "Authorization: Bearer <token>" \
   http://<host>:8080/bundles/webcam/20260720_120000_abcd1234
 curl http://<host>:8080/bundles/webcam/latest -o bundle.tar
 ```

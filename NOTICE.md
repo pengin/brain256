@@ -1,8 +1,8 @@
 # NOTICE
 
-このリポジトリのライセンスは [LICENSE](LICENSE)（MIT）です。ただし、
-一部に第三者の著作物からの派生と、ビルド時に取得される第三者のバイナリが
-含まれます。内訳は以下のとおりです。
+このリポジトリのライセンスは [LICENSE](LICENSE)（MIT）です。ただし、このリポジトリには
+第三者の著作物から派生した部分と、ビルド時に取得される第三者のバイナリが含まれます。
+内訳は以下のとおりです。
 
 ## 1. 自作部分（MIT / Copyright (c) 2026 pengin）
 
@@ -27,8 +27,8 @@
 
 ## 3. OpenWrt のファイルを置き換える / 呼び出すもの
 
-以下は OpenWrt のコードを含みませんが、OpenWrt の同名ファイルの存在を
-前提に書かれています。
+以下のファイルは OpenWrt のコードを含みません。ただし、OpenWrt に同名ファイルが
+存在することを前提としています。
 
 | ファイル | 内容 |
 |---|---|
@@ -38,15 +38,15 @@
 
 ## 4. ビルドすると取得・生成される第三者のバイナリ
 
-これらはリポジトリに含まれませんが、`make` の結果として手元に生成されます。
+これらはリポジトリには含まれず、ビルド時に取得または生成されます。
 再配布する場合は、それぞれのライセンスに従ってください。
 
 - **OpenWrt 24.10.7** — `make fetch` / `make fetch-ib` が
   `downloads.openwrt.org` から取得します。生成される
   `output/rootfs-imx28.tar`、SD イメージ、`bundles/webcam/root/usr/lib/*.so`
-  はこれに由来します。GPL-2.0 ほか、OpenWrt 各パッケージのライセンスに従います。
+  はこれに由来します。GPL-2.0 など、OpenWrt の各パッケージのライセンスに従います。
 - **linux-brain のカーネル（`zImage`）、U-Boot、BrainLILO / boot4u** —
-  隣に clone した buildbrain 側でビルドします。カーネルは GPL-2.0 です。
+  隣接する `buildbrain` 側でビルドします。カーネルには GPL-2.0 が適用されます。
 - **`bundles/webcam` が `opkg install` するパッケージ** — `fswebcam`、
   `uhttpd`、`libgd`、`libjpeg`、`libwebp`、`zlib` ほか。各パッケージの
   ライセンスに従います。

@@ -1,99 +1,137 @@
 brain256
 ========
 
-SHARP Brain（i.MX28 / ARM926EJ-S / Armv5TEJ / 128MB RAM）に
-**OpenWrt ベースの最小 Linux** を入れて、その上で軽量コンテナを動かすための
-一式です。同人誌の付録リポジトリで、本の Chapter 2〜5 をこれ 1 つで
-再現できるようにしてあります。
+このリポジトリは、SHARP Brain（i.MX28 / ARM926EJ-S / Armv5TEJ / 128MB RAM）へ **OpenWrt ベースの最小 Linux**を導入し、そのルートファイルシステム（rootfs）上で軽量コンテナを動かすための一式です。同人誌の付録であり、本の第 2〜5 章をこのリポジトリ 1 つで再現できるようにしています。
 
-> **名前について:** `brain256` はこのリポジトリの名前で、中で動く
-> ディストリビューションとコマンドの名前は `brainwrt` です（`brainwrt-ct`、
-> `/etc/init.d/brainwrt-gadget` など）。本文の表記に合わせています。
+> **名前について：** `brain256` はこのリポジトリの名前で、中で動くディストリビューションとコマンドの名前は `brainwrt` です（`brainwrt-ct`、`/etc/init.d/brainwrt-gadget` など）。本文の表記に合わせています。
 
-対応表は [docs/book-map.md](docs/book-map.md)、コンテナ基盤のリファレンスは
-[docs/brainwrt-ct.md](docs/brainwrt-ct.md) にあります。
+本との対応表は [docs/book-map.md](docs/book-map.md) に、コンテナ基盤のリファレンスは [docs/brainwrt-ct.md](docs/brainwrt-ct.md) にあります。
 
-前提条件
---------
+この README は、ホスト PC でイメージを作り、実機へ持っていくまでの導入用です。実機上の `brainwrt-ct` のコマンド、コンテナバンドル（以下、バンドル）の形式、制約は [brainwrt-ct リファレンス](docs/brainwrt-ct.md) を参照してください。
 
-- **Docker**（macOS なら Docker Desktop）。rootfs の操作は named volume 上で
-  行います。APFS の bind mount はデバイスノードと setuid ビットを黙って壊すためです
-- **隣に [buildbrain](https://github.com/brain-hackers/buildbrain) を clone**
-  しておくこと（既定 `../buildbrain`）。カーネル（linux-brain の zImage）、
-  U-Boot、BrainLILO / boot4u、`nkbin_maker` を借ります
-- **Go 1.24 以降**（`registry/` をビルドする場合のみ）
+ホスト PC の要件
+----------------
 
-実機は PW-SH3 で確認しています。他のモデルで同じことができるかは分かりません。
+- **OS**: サポート対象は Linux または macOS です。Apple Silicon の macOS では、Docker Desktop の `linux/amd64` エミュレーションを使用します。Windows は基本的にサポート対象外で、Windows のネイティブ環境でリポジトリをビルドする手順は用意していません。本文に登場する Windows は、USB NCM 接続や SD イメージの書き込みに限った補足的な対象です。
+- **Docker**: Linux では Docker Engine、macOS では Docker Desktop を使います。`docker run --privileged` と `linux/amd64` コンテナを実行できること、Docker デーモンに接続できる権限が必要です。Docker Compose は使いません。
+- **rootfs の保存先**: rootfs のツリーは Linux ファイルシステム上に置きます。macOS では Makefile が作成する Docker の名前付きボリューム `brainwrt-rootfs` を使い、APFS のバインドマウントには展開しません。
+- **`rsync`**: `scripts/ct.sh build` / `shell` でバンドルを作る場合に必要です。SD イメージの通しビルドだけなら、Docker コンテナ内の `rsync` を使うため、ホスト側へ個別にインストールする必要はありません。
+- **ネットワーク**: 初回は Docker Hub、OpenWrt のダウンロードサイト、binfmt 用イメージへ接続できる必要があります。ImageBuilder や Docker イメージをキャッシュ済みなら、一部の手順はオフラインでも実行できます。
+- **空き容量**: SD イメージ作成では既定で 4 GiB のイメージファイルを生成します。Docker イメージと OpenWrt のキャッシュも作るため、これより多くの空き容量が必要です。
+
+`kpartx`、`losetup`、`sfdisk`、`mkfs`、`mount` など、rootfs と SD イメージの作成に使う低レベルツールは Docker コンテナ内に入っています。ホストへ個別に用意する必要はありません。
+
+次に、隣の [buildbrain](https://github.com/brain-hackers/buildbrain) を複製しておきます（既定 `../buildbrain`）。buildbrain が提供する linux-brain の zImage、U-Boot、BrainLILO / boot4u、`nkbin_maker` を利用します。初回の準備方法は、次のクイックスタートに記載しています。別の場所に複製した場合は、SD イメージを作るコマンドに `BUILDBRAIN=/path/to/buildbrain` を指定してください。
+
+**Go 1.24 以降**は、`registry/` をビルドする場合だけ必要です。
+
+本書の被験体は PW-SA3、リポジトリで検証した実機は PW-SH3 です。どちらも PW-Sx3 系ですが、モデル名は区別して記載します。他のモデルでの動作は確認していません。
 
 クイックスタート
 ----------------
 
+以下は ImageBuilder を使う経路（本の 3.2）で、既定の対象モデル PW-SH3 の SD イメージを作る手順です。すべてのコマンドをホスト PC のリポジトリ直下で実行します。
+
+### 1. buildbrain を準備する（初回のみ）
+
+`buildbrain` 側のビルダーイメージと linux-brain のカーネルを用意します。すでに `buildbrain-builder:local` と `../buildbrain/linux-brain/arch/arm/boot/zImage` がある場合は、この手順を省略できます。
+
 ```sh
-# 1. ビルダーイメージを作る
-make docker-build
-
-# 2. OpenWrt の ImageBuilder を取ってくる（sha256 検証込み）
-make fetch-ib
-
-# 3. rootfs を組む -> output/rootfs-imx28.tar
-make docker-rootfs-ib
-
-# 4. buildbrain 側のカーネルが未ビルドなら先に:
-#    (cd ../buildbrain && make docker-build && make docker-kernel)
-
-# 5. SD イメージを組み立てる -> ../buildbrain/image/sd_wrt.img
-make docker-image
+(cd ../buildbrain && make docker-build && make docker-kernel)
 ```
 
-OpenWrt のバージョンは `Makefile` の `OPENWRT_VERSION`（既定 24.10.7）で
-固定しています。対象モデルは `BRAIN_MODELS`（既定 `sh3`）で選びます。
+### 2. brain256 のビルダーと OpenWrt ImageBuilder を用意する
+
+brain256 の Docker イメージを作り、固定した OpenWrt 24.10.7 の ImageBuilder をダウンロードします。
+
+```sh
+make docker-build
+make fetch-ib
+```
+
+### 3. rootfs を作る
+
+ImageBuilder に brain256 の設定と overlay を適用し、SD イメージへ書き込む rootfs を作成します。
+
+```sh
+make docker-rootfs-ib
+# output/rootfs-imx28.tar が生成される
+```
+
+### 4. SD イメージを作る
+
+`buildbrain` のカーネル、U-Boot、BrainLILO / boot4u と、手順 3 で作った rootfs を組み合わせます。
+
+```sh
+make docker-image
+# ../buildbrain/image/sd_wrt.img が生成される
+```
+
+`docker-image` は `../buildbrain` の U-Boot と `nkbin_maker` もビルドするため、環境によっては時間がかかります。このリポジトリではカーネルをビルドせず、手順 1 で用意した `buildbrain/linux-brain/arch/arm/boot/zImage` を使います。
+
+buildbrain の準備からイメージ作成までを一括して行う場合は、次の 2 行で実行できます。
+
+```sh
+(cd ../buildbrain && make docker-build && make docker-kernel)
+make docker-build fetch-ib docker-rootfs-ib docker-image
+```
+
+主な生成物は次のとおりです。
+
+| 生成物 | 内容 |
+|---|---|
+| `cache/openwrt-imagebuilder-*.tar.zst` | 固定した OpenWrt ImageBuilder のキャッシュ |
+| `output/rootfs-imx28.tar` | Brain 用の overlay を適用した rootfs |
+| `../buildbrain/image/sd_wrt.img` | boot / rootfs / data の 3 パーティションを持つ SD イメージ |
+
+OpenWrt のバージョンは `Makefile` の `OPENWRT_VERSION`（既定 24.10.7）で固定しています。対象モデルは `BRAIN_MODELS`（既定 `sh3`）で選びます。
 
 ```sh
 make docker-image BRAIN_MODELS="sh1 sh2 sh3 sh4 sh5 sh6 sh7 a7200 a7400"
 ```
 
-ドナーイメージから rootfs を抜く経路（本 3.1）を使う場合は、`make fetch` と
-`make docker-rootfs` に読み替えてください。
+ドナーイメージから rootfs を取り出す経路（本 3.1）を使う場合は、`make fetch` と `make docker-rootfs` に読み替えてください。
 
-バンドルを作って配る
---------------------
+コンテナバンドルを作って配布する
+--------------------------------
+
+以下の `scripts/ct.sh` と `scripts/registry.sh` はホスト PC で、`brainwrt-ct` は実機で実行します。
 
 ```sh
 # 一度だけ: qemu-arm を binfmt に登録し、ベースイメージを作る
 ./scripts/ct.sh binfmt
 ./scripts/ct.sh base
 
-# バンドルを組む -> bundles/webcam/root/ と manifest.conf ができる
+# バンドルを組み立てると bundles/webcam/root/ と manifest.conf が生成される
 ./scripts/ct.sh build webcam
 
-# レジストリを立てる（別ホストでも同じマシンでもよい）
+# レジストリを起動する（別ホストでも同じホスト PC でもよい）
 cd registry && PUSH_TOKEN=<token> go run .
 
-# 母艦から push
+# ホスト PC から送信
 BRAINWRT_REGISTRY_URL=http://<host>:8080 \
 BRAINWRT_REGISTRY_TOKEN=<token> \
   ./scripts/registry.sh push webcam
 
-# 実機側で取得して起動
+# 実機側で取得して起動する
 export BRAINWRT_CT_REGISTRY_URL=http://<host>:8080
 brainwrt-ct pull webcam      # 取得して登録する（自動では起動しない）
 brainwrt-ct up webcam
 ```
 
-レジストリを使わずに手で配ることもできます。`bundles/webcam/` を tar に固めて
-実機へ送り、`brainwrt-ct install webcam <tar>` で登録してください。
+レジストリを使わず、手動で配布することもできます。`bundles/webcam/` を tar アーカイブにまとめて実機へ送り、`brainwrt-ct install webcam <tar>` で登録してください。
 
 テスト
 ------
 
+rootfs や実機を用意せず、ホスト PC の POSIX sh だけでコンテナ基盤を確認できます。
+
 ```sh
-sh tests/brainwrt-ct/test_*.sh     # 11 本。実機もカーネル機能も要らない
+sh tests/brainwrt-ct/test_*.sh     # 11 本。実機もカーネル機能も必要としない
 cd registry && go test ./...
 ```
 
 ライセンス
 ----------
 
-MIT（[LICENSE](LICENSE)）。ただし `scripts/build_image.sh` は buildbrain からの
-派生で、ビルド時に OpenWrt や linux-brain のバイナリを取得します。
-内訳は [NOTICE.md](NOTICE.md) を参照してください。
+MIT（[LICENSE](LICENSE)）。ただし `scripts/build_image.sh` は buildbrain からの派生で、ビルド時に OpenWrt や linux-brain のバイナリを取得します。内訳は [NOTICE.md](NOTICE.md) を参照してください。
