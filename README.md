@@ -1,40 +1,73 @@
 brain256
 ========
 
-このリポジトリは、SHARP Brain（i.MX28 / ARM926EJ-S / Armv5TEJ / 128MB RAM）へ **OpenWrt ベースの最小 Linux**を導入し、そのルートファイルシステム（rootfs）上で軽量コンテナを動かすための一式です。同人誌の付録であり、本の第 2〜5 章をこのリポジトリ 1 つで再現できるようにしています。
+このリポジトリは、SHARP Brain（i.MX28 / ARM926EJ-S / Armv5TEJ / 128MB RAM）へ **OpenWrt ベースの最小 Linux**を導入し、そのルートファイルシステム（rootfs）上で軽量コンテナを動かすための一式です。同人誌「Brainを256倍遊び倒す本」の付録であり、本の第 2〜5 章をこのリポジトリ 1 つで再現できるようにしています。
 
 > **名前について：** `brain256` はこのリポジトリの名前で、中で動くディストリビューションとコマンドの名前は `brainwrt` です（`brainwrt-ct`、`/etc/init.d/brainwrt-gadget` など）。本文の表記に合わせています。
 
-本との対応表は [docs/book-map.md](docs/book-map.md) に、コンテナ基盤のリファレンスは [docs/brainwrt-ct.md](docs/brainwrt-ct.md) にあります。
+同人誌「Brainを256倍遊び倒す本」とリポジトリ内のコード等の対応表は [docs/book-map.md](docs/book-map.md) に、コンテナ基盤のリファレンスは [docs/brainwrt-ct.md](docs/brainwrt-ct.md) にあります。
+
+コンテナバンドルをホスト PC から実機へ配布するための小さな HTTP レジストリ `brain-registry` も `registry/` に含まれています。ホスト PC からトークン認証付きでバンドルを送信し、実機側の `brainwrt-ct pull` で取得・検証・登録できます。レジストリ単体の起動・運用方法は [registry/README.md](registry/README.md) を参照してください。教材・テスト向けの最小実装で、HTTPS やユーザー認証は備えていないため、信頼できる LAN または VPN 内で使用してください。
 
 この README は、ホスト PC でイメージを作り、実機へ持っていくまでの導入用です。実機上の `brainwrt-ct` のコマンド、コンテナバンドル（以下、バンドル）の形式、制約は [brainwrt-ct リファレンス](docs/brainwrt-ct.md) を参照してください。
 
-ホスト PC の要件
+**コードとともに、頒布した同人誌の電子版をLLMサービスやコーディングエージェントに読み込ませることを推奨します。**
+
+用意する物
 ----------------
 
-- **OS**: サポート対象は Linux または macOS です。Apple Silicon の macOS では、Docker Desktop の `linux/amd64` エミュレーションを使用します。Windows は基本的にサポート対象外で、Windows のネイティブ環境でリポジトリをビルドする手順は用意していません。本文に登場する Windows は、USB NCM 接続や SD イメージの書き込みに限った補足的な対象です。
-- **Docker**: Linux では Docker Engine、macOS では Docker Desktop を使います。`docker run --privileged` と `linux/amd64` コンテナを実行できること、Docker デーモンに接続できる権限が必要です。Docker Compose は使いません。
-- **rootfs の保存先**: rootfs のツリーは Linux ファイルシステム上に置きます。macOS では Makefile が作成する Docker の名前付きボリューム `brainwrt-rootfs` を使い、APFS のバインドマウントには展開しません。
-- **`rsync`**: `scripts/ct.sh build` / `shell` でバンドルを作る場合に必要です。SD イメージの通しビルドだけなら、Docker コンテナ内の `rsync` を使うため、ホスト側へ個別にインストールする必要はありません。
+### ハードウェア
+
+- （必須）SHARP Brain：これがないと始まりません。現在、筆者の手元で動作確認が取れているのはPW-Sx3のみです。
+- （必須）4GB以上のMicro SDカード：Brainで起動するOSイメージを焼くために必要です。ご家庭にある一般的なものでOK。最小構成では256MBほどあれば十分ですが、今どきそんな容量のMicro SDカードを準備するのは難しいため、4GB以上としています。
+- （必須）ビルド用PC（VM）：Linux か macOSでご用意ください。詳細は以下に記します。
+- （任意）OTG＆電源供給機能付きUSBハブ：BrainのUSBポートは電源供給ができないため、USB機器を接続する場合には必須です。イメージを焼いて、Linux端末として操作する分には不要です。
+
+### OS
+
+- サポート対象は macOS または Linux です。多くの場面でDockerを使うため、OSに依存した操作はあまりないとは思います。
+- Windows は基本的にサポート対象外で、Windows のネイティブ環境でリポジトリをビルドする手順は用意していません。
+
+### ミドルウェア
+
+- Linux では Docker Engine、macOS では Docker Desktop を使います。`docker run --privileged` と `linux/amd64` コンテナを実行できること、Docker デーモンに接続できる権限が必要です。Docker Compose は使いません。
+
+### ツール
+
+- `rsync` は `scripts/ct.sh build` / `shell` でバンドルを作る場合に必要です。SD イメージの通しビルドだけなら、Docker コンテナ内の `rsync` を使うため、ホスト側へ個別にインストールする必要はありません。
+- **Go 1.24 以降**は、`registry/` をビルドする場合だけ必要です。
+- `kpartx`、`losetup`、`sfdisk`、`mkfs`、`mount` など、rootfs と SD イメージの作成に使う低レベルツールは Docker コンテナ内に入っています。ホストへ個別に用意する必要はありません。
+- 隣の [buildbrain](https://github.com/brain-hackers/buildbrain) を複製しておきます（既定 `../buildbrain`）。buildbrain が提供する linux-brain の zImage、U-Boot、BrainLILO / boot4u、`nkbin_maker` を利用します。初回の準備方法は、次のクイックスタートに記載しています。別の場所に複製した場合は、SD イメージを作るコマンドに `BUILDBRAIN=/path/to/buildbrain` を指定してください。
+
+### その他（ネットワーク・ハードウェア）
+
+- **rootfs の保存先**: rootfs のツリーは Linux ファイルシステム上に置きます。macOS では Makefile が作成する Docker の名前付きボリューム `brainwrt-rootfs` を利用します。
 - **ネットワーク**: 初回は Docker Hub、OpenWrt のダウンロードサイト、binfmt 用イメージへ接続できる必要があります。ImageBuilder や Docker イメージをキャッシュ済みなら、一部の手順はオフラインでも実行できます。
-- **空き容量**: SD イメージ作成では既定で 4 GiB のイメージファイルを生成します。Docker イメージと OpenWrt のキャッシュも作るため、これより多くの空き容量が必要です。
-
-`kpartx`、`losetup`、`sfdisk`、`mkfs`、`mount` など、rootfs と SD イメージの作成に使う低レベルツールは Docker コンテナ内に入っています。ホストへ個別に用意する必要はありません。
-
-次に、隣の [buildbrain](https://github.com/brain-hackers/buildbrain) を複製しておきます（既定 `../buildbrain`）。buildbrain が提供する linux-brain の zImage、U-Boot、BrainLILO / boot4u、`nkbin_maker` を利用します。初回の準備方法は、次のクイックスタートに記載しています。別の場所に複製した場合は、SD イメージを作るコマンドに `BUILDBRAIN=/path/to/buildbrain` を指定してください。
-
-**Go 1.24 以降**は、`registry/` をビルドする場合だけ必要です。
-
-本書の被験体は PW-SA3、リポジトリで検証した実機は PW-SH3 です。どちらも PW-Sx3 系ですが、モデル名は区別して記載します。他のモデルでの動作は確認していません。
+- **ディスク空き容量**: SD イメージ作成ではデフォルトの設定で 4 GiB のイメージファイルを生成します。Docker イメージと OpenWrt のキャッシュも作るため、これより多くの空き容量が必要です。
 
 クイックスタート
 ----------------
 
-以下は ImageBuilder を使う経路（本の 3.2）で、既定の対象モデル PW-SH3 の SD イメージを作る手順です。すべてのコマンドをホスト PC のリポジトリ直下で実行します。
+以下は ImageBuilder を使う経路（本の 3.2）で、既定の対象モデル PW-Sx3 の SD イメージを作る手順です。すべてのコマンドをホスト PC のリポジトリ直下で実行します。
 
-### 1. buildbrain を準備する（初回のみ）
+この手順では、`brain256` と `buildbrain` を同じ親ディレクトリに配置します。
 
-`buildbrain` 側のビルダーイメージと linux-brain のカーネルを用意します。すでに `buildbrain-builder:local` と `../buildbrain/linux-brain/arch/arm/boot/zImage` がある場合は、この手順を省略できます。
+```text
+<親ディレクトリ>/
+├── brain256/    # このリポジトリ
+└── buildbrain/  # buildbrain リポジトリ
+```
+
+### 1. buildbrain を clone して準備する（初回のみ）
+
+まず、`buildbrain` を既定の場所へ clone します。すでに `../buildbrain` がある場合は clone を省略してください。
+
+```sh
+git clone --recursive https://github.com/brain-hackers/buildbrain ../buildbrain
+(cd ../buildbrain && git checkout 2e954a9b4bae780b30e863128d74003260633a7f && git submodule update --init --recursive)
+```
+
+続いて、`buildbrain` 側のビルダーイメージと linux-brain のカーネルを用意します。すでに `buildbrain-builder:local` と `../buildbrain/linux-brain/arch/arm/boot/zImage` がある場合は、この手順を省略できます。
 
 ```sh
 (cd ../buildbrain && make docker-build && make docker-kernel)
