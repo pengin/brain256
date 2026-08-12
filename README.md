@@ -115,7 +115,10 @@ make docker-build fetch-ib docker-rootfs-ib docker-image
 |---|---|
 | `cache/openwrt-imagebuilder-*.tar.zst` | 固定した OpenWrt ImageBuilder のキャッシュ |
 | `output/rootfs-imx28.tar` | Brain 用の overlay を適用した rootfs |
+| `output/dtb/imx28-pw*.dtb` | usb0 を dual-role にするパッチを当てた DTB |
 | `../buildbrain/image/sd_wrt.img` | boot / rootfs / data の 3 パーティションを持つ SD イメージ |
+
+`make docker-image` は `make docker-dtb` を先に実行し、buildbrain がビルドした DTB へ `dr_mode = "otg"` と `usb-role-switch` を追加します。この 2 つがないと、共通の `imx28-brain.dtsi` が usb0 を host に固定したままになり、実機の `brainwrt-usb-mode` が `/sys/class/usb_role` を見つけられません。buildbrain 側のカーネルは再ビルドしません。
 
 OpenWrt のバージョンは `Makefile` の `OPENWRT_VERSION`（既定 24.10.7）で固定しています。対象モデルは `BRAIN_MODELS`（既定 `sh3`）で選びます。
 
