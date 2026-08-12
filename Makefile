@@ -42,6 +42,10 @@ fetch-buildbrain:
 fetch-kernel:
 	BRAIN_MODELS="$(BRAIN_MODELS)" ./scripts/fetch_kernel.sh
 
+.PHONY: fetch-boot
+fetch-boot:
+	BRAIN_MODELS="$(BRAIN_MODELS)" ./scripts/fetch_boot.sh $(PROFILE)
+
 .PHONY: docker-build
 docker-build:
 	docker build --platform linux/amd64 -t $(DOCKER_IMAGE) -f Dockerfile .
@@ -113,18 +117,12 @@ check-rootfs-fresh:
 
 .PHONY: docker-image
 docker-image: check-rootfs-fresh docker-dtb docker-loop-clean
-	mkdir -p cache/kernel
 	docker run --rm --platform linux/amd64 --privileged \
 		-e BRAIN_MODELS="$(BRAIN_MODELS)" \
-		-e BRAINWRT_KERNEL_DIR=/brainwrt-kernel \
-		-v "$$PWD/output":/brainwrt-output \
-		-v "$$PWD/scripts":/brainwrt-scripts \
-		-v "$$PWD/cache/kernel":/brainwrt-kernel:ro \
-		-v "$$(cd $(BUILDBRAIN) && pwd)":/work -w /work $(BUILDBRAIN_DOCKER_IMAGE) \
-		bash -lc "rm -rf brainwrt-rootfs && mkdir brainwrt-rootfs && \
-			tar -xpf /brainwrt-output/rootfs-$(PROFILE).tar -C brainwrt-rootfs && \
-			make -C nkbin_maker clean all && \
-			IMG_BUILD_JOBS=1 /brainwrt-scripts/build_image.sh brainwrt-rootfs sd_wrt.img $(IMG_SIZE_M)"
+		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
+		bash -lc "rm -rf output/work/rootfs && mkdir -p output/work/rootfs && \
+			tar -xpf output/rootfs-$(PROFILE).tar -C output/work/rootfs && \
+			./scripts/build_image.sh output/work/rootfs sd_wrt.img $(IMG_SIZE_M)"
 
 # loop device は Docker Desktop VM 全体で共有される。kpartx を使うコンテナが
 # detach 前に終了すると残り、古い loop が 8 個あるだけで後続のイメージビルドが
