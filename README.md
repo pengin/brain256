@@ -37,7 +37,7 @@ brain256
 - `rsync` は `scripts/ct.sh build` / `shell` でバンドルを作る場合に必要です。SD イメージの通しビルドだけなら、Docker コンテナ内の `rsync` を使うため、ホスト側へ個別にインストールする必要はありません。
 - **Go 1.24 以降**は、`registry/` をビルドする場合だけ必要です。
 - `kpartx`、`losetup`、`sfdisk`、`mkfs`、`mount` など、rootfs と SD イメージの作成に使う低レベルツールは Docker コンテナ内に入っています。ホストへ個別に用意する必要はありません。
-- 隣の [buildbrain](https://github.com/brain-hackers/buildbrain) を複製しておきます（既定 `../buildbrain`）。buildbrain が提供する linux-brain の zImage、U-Boot、BrainLILO / boot4u、`nkbin_maker` を利用します。初回の準備方法は、次のクイックスタートに記載しています。別の場所に複製した場合は、SD イメージを作るコマンドに `BUILDBRAIN=/path/to/buildbrain` を指定してください。
+- 他のリポジトリを複製する必要はありません。カーネル・U-Boot・BrainLILO は、[buildbrain](https://github.com/brain-hackers/buildbrain) と [brainlilo](https://github.com/brain-hackers/brainlilo) が公開しているビルド済みの配布物を `make fetch-kernel` / `make fetch-boot` で取得します（合計 10MB 程度）。
 
 ### その他（ネットワーク・ハードウェア）
 
@@ -50,40 +50,26 @@ brain256
 
 以下は ImageBuilder を使う経路（本の 3.2）で、既定の対象モデル PW-Sx3 の SD イメージを作る手順です。すべてのコマンドをホスト PC のリポジトリ直下で実行します。
 
-この手順では、`brain256` と `buildbrain` を同じ親ディレクトリに配置します。
+このリポジトリだけで完結します。他のリポジトリを複製する必要はありません。
 
-```text
-<親ディレクトリ>/
-├── brain256/    # このリポジトリ
-└── buildbrain/  # buildbrain リポジトリ
-```
+### 1. 起動用のバイナリを取得する（初回のみ）
 
-### 1. buildbrain を用意する（初回のみ）
-
-`buildbrain` からは U-Boot と BrainLILO のソースだけを使います。カーネルは buildbrain が公開しているリリースから取得するため、巨大な `linux-brain` は取得せず、ビルドもしません。
+カーネル、U-Boot、BrainLILO はいずれもビルドしません。Brainux の開発元が公開しているビルド済みの配布物を取得して使います。SD の boot パーティションに置くものは、これまで Brainux が使ってきた資産そのものです。
 
 ```sh
-make fetch-buildbrain
 make fetch-kernel
+make fetch-boot
 ```
 
-`fetch-buildbrain` はピン留めしたコミットを浅く取得し、`u-boot-brain` / `nkbin_maker` / `brainlilo` の 3 つだけを初期化します（約 246MB）。`fetch-kernel` は `linux-2026-03-25-024518.zip` を取得し、sha256 を照合して `cache/kernel/` へ展開します。
+`fetch-kernel` はカーネルと DTB を、`fetch-boot` は U-Boot と BrainLILO を取得します。どちらも `profiles/imx28/artifacts.sha256` に記録した sha256 と照合します。合計で 10MB 程度です。
 
-続いて `buildbrain` 側のビルダーイメージを作ります。すでに `buildbrain-builder:local` がある場合は省略できます。
-
-```sh
-(cd ../buildbrain && make docker-build)
-```
-
-> **カーネルを自分でビルドしたい場合**
+> **ハッシュについて**
 >
-> 厳密な再現性が必要なときや、`a7200` / `a7400` を対象にするときは、`linux-brain` を取得してカーネルをビルドしてください。リリースには `imx28-pwsh1..7.dtb` しか含まれません。
+> buildbrain と brainlilo は OpenWrt と違って `sha256sums` を公開していません。`artifacts.sha256` の値は本リポジトリで実測したものです。上流の署名による保証ではなく、配布物が後から差し替えられた場合に検出するためのものです。
+
+> **対応機種について**
 >
-> ```sh
-> (cd ../buildbrain && git submodule update --init --recursive linux-brain)
-> (cd ../buildbrain && make docker-build && make docker-kernel)
-> make docker-dtb DTB_SRC_DIR=/buildbrain/linux-brain/arch/arm/boot/dts
-> ```
+> この手順が対応するのは PW-SH1 から PW-SH7 です。PW-A7200 / A7400 は、配布物に DTB が含まれないため扱いません。[buildbrain](https://github.com/brain-hackers/buildbrain) でカーネルから自前ビルドすれば作れる可能性はありますが、本リポジトリでは扱いません。
 
 ### 2. brain256 のビルダーと OpenWrt ImageBuilder を用意する
 
@@ -105,21 +91,19 @@ make docker-rootfs-ib
 
 ### 4. SD イメージを作る
 
-`buildbrain` のカーネル、U-Boot、BrainLILO / boot4u と、手順 3 で作った rootfs を組み合わせます。
+手順 1 で取得したカーネル、U-Boot、BrainLILO と、手順 3 で作った rootfs を組み合わせます。
 
 ```sh
 make docker-image
-# ../buildbrain/image/sd_wrt.img が生成される
+# output/sd_wrt.img が生成される
 ```
 
-`docker-image` は `../buildbrain` の U-Boot と `nkbin_maker` もビルドするため、環境によっては時間がかかります。このリポジトリではカーネルをビルドせず、手順 1 で `cache/kernel/` へ展開した zImage を使います。
+`docker-image` はコンパイルを一切行いません。取得済みのバイナリと rootfs を組み合わせるだけです。
 
-buildbrain の準備からイメージ作成までを一括して行う場合は、次の 2 行で実行できます。
+準備からイメージ作成までを一括して行う場合は、次の 1 行で実行できます。
 
 ```sh
-make fetch-buildbrain fetch-kernel
-(cd ../buildbrain && make docker-build)
-make docker-build fetch-ib docker-rootfs-ib docker-image
+make docker-build fetch-kernel fetch-boot fetch-ib docker-rootfs-ib docker-image
 ```
 
 主な生成物は次のとおりです。
@@ -128,11 +112,12 @@ make docker-build fetch-ib docker-rootfs-ib docker-image
 |---|---|
 | `cache/openwrt-imagebuilder-*.tar.zst` | 固定した OpenWrt ImageBuilder のキャッシュ |
 | `output/rootfs-imx28.tar` | Brain 用の overlay を適用した rootfs |
-| `cache/kernel/{zImage,imx28-pwsh*.dtb}` | buildbrain のリリースから取得したカーネルと DTB |
+| `cache/kernel/{zImage,imx28-pwsh*.dtb}` | 取得したカーネルと DTB |
+| `cache/boot/{nk,loader,lilo}` | 取得した U-Boot と BrainLILO |
 | `output/dtb/imx28-pw*.dtb` | usb0 を dual-role にするパッチを当てた DTB |
-| `../buildbrain/image/sd_wrt.img` | boot / rootfs / data の 3 パーティションを持つ SD イメージ |
+| `output/sd_wrt.img` | boot / rootfs / data の 3 パーティションを持つ SD イメージ |
 
-`make docker-image` は `make docker-dtb` を先に実行し、buildbrain がビルドした DTB へ `dr_mode = "otg"` と `usb-role-switch` を追加します。この 2 つがないと、共通の `imx28-brain.dtsi` が usb0 を host に固定したままになり、実機の `brainwrt-usb-mode` が `/sys/class/usb_role` を見つけられません。buildbrain 側のカーネルは再ビルドしません。
+`make docker-image` は `make docker-dtb` を先に実行し、取得した DTB へ `dr_mode = "otg"` と `usb-role-switch` を追加します。この 2 つがないと、共通の `imx28-brain.dtsi` が usb0 を host に固定したままになり、実機の `brainwrt-usb-mode` が `/sys/class/usb_role` を見つけられません。カーネルは再ビルドしません。
 
 OpenWrt のバージョンは `Makefile` の `OPENWRT_VERSION`（既定 24.10.7）で固定しています。対象モデルは `BRAIN_MODELS`（既定 `sh3`）で選びます。
 

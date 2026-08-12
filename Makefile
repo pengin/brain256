@@ -1,18 +1,11 @@
 DOCKER_IMAGE=brainwrt-builder
 ROOTFS_VOLUME=brainwrt-rootfs
 PROFILE?=imx28
-# buildbrain のビルダーイメージには build_image.sh が必要とする ARM
-# クロスツールチェーンが入っている（モデルごとの U-Boot バイナリを再ビルドする）。
-BUILDBRAIN_DOCKER_IMAGE=buildbrain-builder:local
-BUILDBRAIN?=../buildbrain
-# U-Boot と BrainLILO のソースを取るコミット。
-BUILDBRAIN_COMMIT?=2e954a9b4bae780b30e863128d74003260633a7f
-# カーネルと DTB を取るリリース。上のコミットとは役割が違うので別に持つ。
+# カーネル・DTB・U-Boot を取る buildbrain のリリース。
 BUILDBRAIN_RELEASE?=2026-03-25-024518
 export BUILDBRAIN_RELEASE
 # docker-dtb は $$PWD を /work へ mount するので cache/ は /work/cache で見える。
-# カーネルを自前ビルドする場合は
-#   make docker-dtb DTB_SRC_DIR=/buildbrain/linux-brain/arch/arm/boot/dts
+# 別の場所の DTB を使う場合は DTB_SRC_DIR を /work 配下のパスで上書きする。
 DTB_SRC_DIR?=/work/cache/kernel
 # p1=boot(64M)+p2=rootfs(ROOTFS_PART_M、build_image.sh の既定は 160M)+
 # p3=data(残り全部)。実機に fdisk 相当のツールがないため、初回ブートでは
@@ -33,10 +26,6 @@ fetch:
 .PHONY: fetch-ib
 fetch-ib:
 	./scripts/fetch_imagebuilder.sh
-
-.PHONY: fetch-buildbrain
-fetch-buildbrain:
-	BUILDBRAIN_COMMIT=$(BUILDBRAIN_COMMIT) ./scripts/fetch_buildbrain.sh $(BUILDBRAIN)
 
 .PHONY: fetch-kernel
 fetch-kernel:
@@ -76,16 +65,13 @@ docker-rootfs-ib: docker-volume-rm docker-volume-create docker-loop-clean
 		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
 		bash -lc "./scripts/build_rootfs_imagebuilder.sh $(PROFILE)"
 
-# buildbrain がビルドした DTB へ profiles/$(PROFILE)/dtb-patch.conf の内容を
-# 適用し、output/dtb/ へ書き出す。buildbrain のツリーは読むだけ(:ro)。
-# build_image.sh を走らせる buildbrain-builder:local には fdtput が無いので、
-# DTB を触る処理はこちらのイメージで行う。
+# fetch-kernel が取得した DTB へ profiles/$(PROFILE)/dtb-patch.conf の内容を
+# 適用し、output/dtb/ へ書き出す。取得元の DTB は書き換えない。
 .PHONY: docker-dtb
 docker-dtb:
 	docker run --rm --platform linux/amd64 \
 		-e BRAIN_MODELS="$(BRAIN_MODELS)" \
 		-e DTB_SRC_DIR="$(DTB_SRC_DIR)" \
-		-v "$$(cd $(BUILDBRAIN) && pwd)":/buildbrain:ro \
 		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
 		bash -lc "./scripts/patch_dtb.sh $(PROFILE)"
 
@@ -95,10 +81,9 @@ docker-test-dtb:
 		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
 		bash -lc "sh tests/test_patch_dtb.sh"
 
-# buildbrain のビルダーイメージを再利用する。build_image.sh が rootfs ディレクトリを
-# 探す場所へ rootfs tarball を展開し、Brainux と同じ手順で（モデルごとの U-Boot、
-# nk.bin、パーティション分割）SD イメージを組み立てる。
-# カーネルは buildbrain ツリー内の linux-brain から取得する（3.2 参照）。
+# rootfs tarball を output/work/rootfs へ展開し、fetch-kernel と fetch-boot が
+# 取得したカーネル・U-Boot・BrainLILO と組み合わせて SD イメージを作る。
+# コンパイルは一切行わないので、自前の brainwrt-builder で完結する。
 # SD イメージは output/rootfs-$(PROFILE).tar を焼き込む。overlay を直した後に
 # rootfs を組み直さず docker-image を回すと、古い rootfs のイメージが黙って
 # 出来上がる（実際にやった）。profiles/ のほうが新しければ止める。

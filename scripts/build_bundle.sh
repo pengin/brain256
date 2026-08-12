@@ -8,7 +8,7 @@
 # ImageBuilder 同梱の opkg（staging_dir/host/bin/opkg）は x86_64 Linux
 # バイナリ（同梱の ld-linux-x86-64.so.2 と .opkg.bin を実行するラッパー）で、
 # macOS では動かない。そのため opkg の処理は、他の brainwrt ビルドでも使う
-# buildbrain-builder:local に対する `docker run --platform linux/amd64` の中で
+# brainwrt-builder に対する `docker run --platform linux/amd64` の中で
 # 実行する。このイメージは外部ネットワークに接続でき、opkg が
 # downloads.openwrt.org から fswebcam と依存パッケージを取得できることを
 # 確認済みである。
@@ -30,7 +30,7 @@ VERSION="${OPENWRT_VERSION:-24.10.7}"
 IB_TAR="${IB_TAR:-${REPO_ROOT}/cache/openwrt-imagebuilder-${VERSION}-mxs-generic.Linux-x86_64.tar.zst}"
 [ -f "${IB_TAR}" ] || { echo "error: ${IB_TAR} missing -- run 'make fetch-ib' first" >&2; exit 1; }
 
-DOCKER_IMAGE="${BUILDBRAIN_DOCKER_IMAGE:-buildbrain-builder:local}"
+DOCKER_IMAGE="${BRAINWRT_DOCKER_IMAGE:-brainwrt-builder}"
 
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/build_bundle.${name}.XXXXXX")"
 cleanup() { rm -rf "${scratch}"; }
@@ -39,7 +39,7 @@ trap cleanup EXIT
 echo "build_bundle: scratch=${scratch}"
 
 # --- 1. キャッシュ済み ImageBuilder を展開 --------------------------------
-# tarball は zstd 圧縮されている。buildbrain-builder コンテナの GNU tar
+# tarball は zstd 圧縮されている。コンテナ側の GNU tar
 #（1.35、PATH に zstd がない）では展開できないため、zstd/unzstd が使える
 # ホスト側（Homebrew）で実行する。
 mkdir -p "${scratch}/ib"

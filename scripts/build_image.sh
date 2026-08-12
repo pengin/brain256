@@ -15,17 +15,18 @@
 #
 # BRAIN_MODELS で U-Boot/nk.bin と DTB を作る Brain モデルを選ぶ。既定は手元の
 # 実機だけである sh3。全モデルは次のとおり。
-#   a7200 a7400 sh1 sh2 sh3 sh4 sh5 sh6 sh7
+#   sh1 sh2 sh3 sh4 sh5 sh6 sh7
+#   （a7200/a7400 は配布物が揃わないため本リポジトリでは扱わない）
 #
-# カーネル（zImage）とモデルごとの DTB は buildbrain ツリーでビルドした
-# linux-brain（6.1.70）から取得する。本の 3.2 参照。
+# カーネル（zImage）とモデルごとの DTB は linux-brain（6.1.70）由来のもので、
+# scripts/fetch_kernel.sh が buildbrain のリリースから取得する。本の 3.2 参照。
 set -uex -o pipefail
 
 show_help() {
     cat << 'EOF'
 Usage: build_image.sh ROOTFS IMG_NAME SIZE_M
 
-Build a bootable brainwrt SD image using buildbrain's artifacts.
+Build a bootable brainwrt SD image from prefetched artifacts.
 
 Arguments:
   ROOTFS       Extracted rootfs directory (default: output/work/rootfs).

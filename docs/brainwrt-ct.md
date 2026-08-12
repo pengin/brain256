@@ -8,7 +8,7 @@
 
 - 対象モデルは `Makefile` の既定値 `BRAIN_MODELS=sh3`、すなわち PW-SH3 です。
 - rootfs は OpenWrt 24.10.7 系の `mxs` / `arm_arm926ej-s` をベースにします。パッケージ管理には `opkg` を使います。
-- カーネル、U-Boot、BrainLILO / boot4u は、隣接する `buildbrain` リポジトリ（既定 `../buildbrain`）の成果物を使います。このリポジトリでは変更しません。
+- カーネル、U-Boot、BrainLILO は、brain-hackers が公開しているビルド済みの配布物を取得して使います（`make fetch-kernel` / `make fetch-boot`）。このリポジトリでは変更しません。
 - デバイス上のバンドルは `/data/apps/<name>/` に置きます。
 - `brainwrt-ct` は通常の Docker デーモンではありません。イメージを常駐管理するのではなく、各バンドルのディレクトリを直接起動します。
 - 以下の例で `<device>` はデバイスの IP アドレス、`<registry-host>` はレジストリを実行するホスト PC の名前または IP アドレスです。

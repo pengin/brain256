@@ -16,7 +16,7 @@
 
 派生元の著作権表示はファイル冒頭に保持しています。
 
-なお、カーネル（linux-brain の `zImage`）、U-Boot、BrainLILO / boot4u、`nkbin_maker` は buildbrain 側でビルドするもので、このリポジトリには含まれません（§4 参照）。
+なお、カーネル（linux-brain の `zImage`）、U-Boot、BrainLILO はいずれもビルド済みの配布物を取得して使うもので、このリポジトリには含まれません（§4 参照）。
 
 ## 3. OpenWrt のファイルを置き換える / 呼び出すもの
 
@@ -33,5 +33,8 @@
 これらはリポジトリには含まれず、ビルド時に取得または生成されます。再配布する場合は、それぞれのライセンスに従ってください。
 
 - **OpenWrt 24.10.7** — `make fetch` / `make fetch-ib` が `downloads.openwrt.org` から取得します。生成される `output/rootfs-imx28.tar`、SD イメージ、`bundles/webcam/root/usr/lib/*.so` はこれに由来します。GPL-2.0 など、OpenWrt の各パッケージのライセンスに従います。
-- **linux-brain のカーネル（`zImage`）、U-Boot、BrainLILO / boot4u** — 隣接する `buildbrain` 側でビルドします。カーネルには GPL-2.0 が適用されます。
+- **linux-brain のカーネル（`zImage`）とモデルごとの DTB** — `make fetch-kernel` が brain-hackers/buildbrain のリリース（`linux-<release>.zip`）から取得します。カーネルには GPL-2.0 が適用されます。
+- **モデルごとの U-Boot と `nk.bin`** — `make fetch-boot` が brain-hackers/buildbrain のリリース（`uboot-<model>-<release>.zip`、MIT）から取得します。SD の `loader/` と `nk/` に置かれます。U-Boot 本体には GPL-2.0 が適用されます。
+- **BrainLILO** — `make fetch-boot` が brain-hackers/brainlilo のリリース（`brainlilo-4.1.0.zip`、MIT）から取得します。SD の `アプリ/Launch Linux/` に置かれます。
+- **`exeopener.exe.gz`** — `make fetch-boot` が brain-hackers/buildbrain（MIT）から取得します。BrainLILO を起動するためのランチャで、SD の `アプリ/Launch Linux/AppMain.exe` になります。
 - **`bundles/webcam` が `opkg install` するパッケージ** — `fswebcam`、`uhttpd`、`libgd`、`libjpeg`、`libwebp`、`zlib` ほか。各パッケージのライセンスに従います。
