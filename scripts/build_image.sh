@@ -133,9 +133,15 @@ sudo cp ${WORK}/brainwrt_version ${WORK}/p1/
 echo "kernel: linux-brain (${LINUX}/arch/arm/boot/zImage)"
 sudo cp ${LINUX}/arch/arm/boot/zImage ${WORK}/p1/
 
+DTB_PATCHED="${BRAINWRT_DTB_DIR:-/brainwrt-output/dtb}"
 for i in ${MODELS}; do
-    echo "dtb (pw${i}): linux-brain"
-    sudo cp ${LINUX}/arch/arm/boot/dts/imx28-pw${i}.dtb ${WORK}/p1/
+    if [ -f "${DTB_PATCHED}/imx28-pw${i}.dtb" ]; then
+        echo "dtb (pw${i}): patched (${DTB_PATCHED})"
+        sudo cp "${DTB_PATCHED}/imx28-pw${i}.dtb" ${WORK}/p1/
+    else
+        echo "dtb (pw${i}): linux-brain (パッチ未適用 -- 'make docker-dtb' を先に実行してください)"
+        sudo cp ${LINUX}/arch/arm/boot/dts/imx28-pw${i}.dtb ${WORK}/p1/
+    fi
 done
 sudo mkdir -p ${WORK}/p1/nk
 sudo cp ${WORK}/*.bin ${WORK}/p1/nk/

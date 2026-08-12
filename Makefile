@@ -55,6 +55,24 @@ docker-rootfs-ib: docker-volume-rm docker-volume-create docker-loop-clean
 		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
 		bash -lc "./scripts/build_rootfs_imagebuilder.sh $(PROFILE)"
 
+# buildbrain がビルドした DTB へ profiles/$(PROFILE)/dtb-patch.conf の内容を
+# 適用し、output/dtb/ へ書き出す。buildbrain のツリーは読むだけ(:ro)。
+# build_image.sh を走らせる buildbrain-builder:local には fdtput が無いので、
+# DTB を触る処理はこちらのイメージで行う。
+.PHONY: docker-dtb
+docker-dtb:
+	docker run --rm --platform linux/amd64 \
+		-e BRAIN_MODELS="$(BRAIN_MODELS)" \
+		-v "$$(cd $(BUILDBRAIN) && pwd)":/buildbrain:ro \
+		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
+		bash -lc "./scripts/patch_dtb.sh $(PROFILE)"
+
+.PHONY: docker-test-dtb
+docker-test-dtb:
+	docker run --rm --platform linux/amd64 \
+		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
+		bash -lc "sh tests/test_patch_dtb.sh"
+
 # buildbrain のビルダーイメージを再利用する。build_image.sh が rootfs ディレクトリを
 # 探す場所へ rootfs tarball を展開し、Brainux と同じ手順で（モデルごとの U-Boot、
 # nk.bin、パーティション分割）SD イメージを組み立てる。
@@ -76,7 +94,7 @@ check-rootfs-fresh:
 	fi
 
 .PHONY: docker-image
-docker-image: check-rootfs-fresh docker-loop-clean
+docker-image: check-rootfs-fresh docker-dtb docker-loop-clean
 	docker run --rm --platform linux/amd64 --privileged \
 		-e BRAIN_MODELS="$(BRAIN_MODELS)" \
 		-v "$$PWD/output":/brainwrt-output \

@@ -6,6 +6,9 @@ work/
 # subagent-driven-development の進捗レジャー(scratch)。git clean -fdx で消える前提。
 .superpowers/
 
+# 設計メモ・実装計画。手元の作業用でリポジトリには含めない。
+docs/superpowers/
+
 # bundles/webcam/root: ImageBuilder の opkg が生成するツリー
 # (scripts/build_bundle.sh / scripts/ct.sh build)。手書きなのは
 # usr/bin/webcam-run と srv/www/index.html と manifest.conf だけ。
