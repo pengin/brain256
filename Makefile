@@ -5,6 +5,15 @@ PROFILE?=imx28
 # クロスツールチェーンが入っている（モデルごとの U-Boot バイナリを再ビルドする）。
 BUILDBRAIN_DOCKER_IMAGE=buildbrain-builder:local
 BUILDBRAIN?=../buildbrain
+# U-Boot と BrainLILO のソースを取るコミット。
+BUILDBRAIN_COMMIT?=2e954a9b4bae780b30e863128d74003260633a7f
+# カーネルと DTB を取るリリース。上のコミットとは役割が違うので別に持つ。
+BUILDBRAIN_RELEASE?=2026-03-25-024518
+export BUILDBRAIN_RELEASE
+# docker-dtb は $$PWD を /work へ mount するので cache/ は /work/cache で見える。
+# カーネルを自前ビルドする場合は
+#   make docker-dtb DTB_SRC_DIR=/buildbrain/linux-brain/arch/arm/boot/dts
+DTB_SRC_DIR?=/work/cache/kernel
 # p1=boot(64M)+p2=rootfs(ROOTFS_PART_M、build_image.sh の既定は 160M)+
 # p3=data(残り全部)。実機に fdisk 相当のツールがないため、初回ブートでは
 # brainwrt-data-grow が MBR を直接書き換え、p3 を実カード容量まで拡張する。
@@ -24,6 +33,14 @@ fetch:
 .PHONY: fetch-ib
 fetch-ib:
 	./scripts/fetch_imagebuilder.sh
+
+.PHONY: fetch-buildbrain
+fetch-buildbrain:
+	BUILDBRAIN_COMMIT=$(BUILDBRAIN_COMMIT) ./scripts/fetch_buildbrain.sh $(BUILDBRAIN)
+
+.PHONY: fetch-kernel
+fetch-kernel:
+	BRAIN_MODELS="$(BRAIN_MODELS)" ./scripts/fetch_kernel.sh
 
 .PHONY: docker-build
 docker-build:
@@ -63,6 +80,7 @@ docker-rootfs-ib: docker-volume-rm docker-volume-create docker-loop-clean
 docker-dtb:
 	docker run --rm --platform linux/amd64 \
 		-e BRAIN_MODELS="$(BRAIN_MODELS)" \
+		-e DTB_SRC_DIR="$(DTB_SRC_DIR)" \
 		-v "$$(cd $(BUILDBRAIN) && pwd)":/buildbrain:ro \
 		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
 		bash -lc "./scripts/patch_dtb.sh $(PROFILE)"
@@ -95,10 +113,13 @@ check-rootfs-fresh:
 
 .PHONY: docker-image
 docker-image: check-rootfs-fresh docker-dtb docker-loop-clean
+	mkdir -p cache/kernel
 	docker run --rm --platform linux/amd64 --privileged \
 		-e BRAIN_MODELS="$(BRAIN_MODELS)" \
+		-e BRAINWRT_KERNEL_DIR=/brainwrt-kernel \
 		-v "$$PWD/output":/brainwrt-output \
 		-v "$$PWD/scripts":/brainwrt-scripts \
+		-v "$$PWD/cache/kernel":/brainwrt-kernel:ro \
 		-v "$$(cd $(BUILDBRAIN) && pwd)":/work -w /work $(BUILDBRAIN_DOCKER_IMAGE) \
 		bash -lc "rm -rf brainwrt-rootfs && mkdir brainwrt-rootfs && \
 			tar -xpf /brainwrt-output/rootfs-$(PROFILE).tar -C brainwrt-rootfs && \

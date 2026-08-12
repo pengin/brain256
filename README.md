@@ -58,20 +58,32 @@ brain256
 └── buildbrain/  # buildbrain リポジトリ
 ```
 
-### 1. buildbrain を clone して準備する（初回のみ）
+### 1. buildbrain を用意する（初回のみ）
 
-まず、`buildbrain` を既定の場所へ clone します。すでに `../buildbrain` がある場合は clone を省略してください。
-
-```sh
-git clone --recursive https://github.com/brain-hackers/buildbrain ../buildbrain
-(cd ../buildbrain && git checkout 2e954a9b4bae780b30e863128d74003260633a7f && git submodule update --init --recursive)
-```
-
-続いて、`buildbrain` 側のビルダーイメージと linux-brain のカーネルを用意します。すでに `buildbrain-builder:local` と `../buildbrain/linux-brain/arch/arm/boot/zImage` がある場合は、この手順を省略できます。
+`buildbrain` からは U-Boot と BrainLILO のソースだけを使います。カーネルは buildbrain が公開しているリリースから取得するため、巨大な `linux-brain` は取得せず、ビルドもしません。
 
 ```sh
-(cd ../buildbrain && make docker-build && make docker-kernel)
+make fetch-buildbrain
+make fetch-kernel
 ```
+
+`fetch-buildbrain` はピン留めしたコミットを浅く取得し、`u-boot-brain` / `nkbin_maker` / `brainlilo` の 3 つだけを初期化します（約 246MB）。`fetch-kernel` は `linux-2026-03-25-024518.zip` を取得し、sha256 を照合して `cache/kernel/` へ展開します。
+
+続いて `buildbrain` 側のビルダーイメージを作ります。すでに `buildbrain-builder:local` がある場合は省略できます。
+
+```sh
+(cd ../buildbrain && make docker-build)
+```
+
+> **カーネルを自分でビルドしたい場合**
+>
+> 厳密な再現性が必要なときや、`a7200` / `a7400` を対象にするときは、`linux-brain` を取得してカーネルをビルドしてください。リリースには `imx28-pwsh1..7.dtb` しか含まれません。
+>
+> ```sh
+> (cd ../buildbrain && git submodule update --init --recursive linux-brain)
+> (cd ../buildbrain && make docker-build && make docker-kernel)
+> make docker-dtb DTB_SRC_DIR=/buildbrain/linux-brain/arch/arm/boot/dts
+> ```
 
 ### 2. brain256 のビルダーと OpenWrt ImageBuilder を用意する
 
@@ -100,12 +112,13 @@ make docker-image
 # ../buildbrain/image/sd_wrt.img が生成される
 ```
 
-`docker-image` は `../buildbrain` の U-Boot と `nkbin_maker` もビルドするため、環境によっては時間がかかります。このリポジトリではカーネルをビルドせず、手順 1 で用意した `buildbrain/linux-brain/arch/arm/boot/zImage` を使います。
+`docker-image` は `../buildbrain` の U-Boot と `nkbin_maker` もビルドするため、環境によっては時間がかかります。このリポジトリではカーネルをビルドせず、手順 1 で `cache/kernel/` へ展開した zImage を使います。
 
 buildbrain の準備からイメージ作成までを一括して行う場合は、次の 2 行で実行できます。
 
 ```sh
-(cd ../buildbrain && make docker-build && make docker-kernel)
+make fetch-buildbrain fetch-kernel
+(cd ../buildbrain && make docker-build)
 make docker-build fetch-ib docker-rootfs-ib docker-image
 ```
 
@@ -115,6 +128,7 @@ make docker-build fetch-ib docker-rootfs-ib docker-image
 |---|---|
 | `cache/openwrt-imagebuilder-*.tar.zst` | 固定した OpenWrt ImageBuilder のキャッシュ |
 | `output/rootfs-imx28.tar` | Brain 用の overlay を適用した rootfs |
+| `cache/kernel/{zImage,imx28-pwsh*.dtb}` | buildbrain のリリースから取得したカーネルと DTB |
 | `output/dtb/imx28-pw*.dtb` | usb0 を dual-role にするパッチを当てた DTB |
 | `../buildbrain/image/sd_wrt.img` | boot / rootfs / data の 3 パーティションを持つ SD イメージ |
 
@@ -123,7 +137,7 @@ make docker-build fetch-ib docker-rootfs-ib docker-image
 OpenWrt のバージョンは `Makefile` の `OPENWRT_VERSION`（既定 24.10.7）で固定しています。対象モデルは `BRAIN_MODELS`（既定 `sh3`）で選びます。
 
 ```sh
-make docker-image BRAIN_MODELS="sh1 sh2 sh3 sh4 sh5 sh6 sh7 a7200 a7400"
+make docker-image BRAIN_MODELS="sh1 sh2 sh3 sh4 sh5 sh6 sh7"
 ```
 
 ドナーイメージから rootfs を取り出す経路（本 3.1）を使う場合は、`make fetch` と `make docker-rootfs` に読み替えてください。

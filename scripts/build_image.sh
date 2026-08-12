@@ -130,8 +130,14 @@ sudo mount /dev/mapper/${LOOPDEV}p2 ${WORK}/p2
 echo ${BRAINWRT_VERSION:-unknown} > ${WORK}/brainwrt_version
 sudo cp ${WORK}/brainwrt_version ${WORK}/p1/
 
-echo "kernel: linux-brain (${LINUX}/arch/arm/boot/zImage)"
-sudo cp ${LINUX}/arch/arm/boot/zImage ${WORK}/p1/
+KERNEL_DIR="${BRAINWRT_KERNEL_DIR:-}"
+if [ -n "${KERNEL_DIR}" ] && [ -f "${KERNEL_DIR}/zImage" ]; then
+    echo "kernel: release (${KERNEL_DIR}/zImage)"
+    sudo cp "${KERNEL_DIR}/zImage" ${WORK}/p1/
+else
+    echo "kernel: linux-brain (${LINUX}/arch/arm/boot/zImage)"
+    sudo cp ${LINUX}/arch/arm/boot/zImage ${WORK}/p1/
+fi
 
 DTB_PATCHED="${BRAINWRT_DTB_DIR:-/brainwrt-output/dtb}"
 for i in ${MODELS}; do
