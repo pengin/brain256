@@ -128,6 +128,7 @@ check-rootfs-fresh:
 docker-image: check-rootfs-fresh docker-dtb docker-loop-clean
 	docker run --rm --platform linux/amd64 --privileged \
 		-e BRAIN_MODELS="$(BRAIN_MODELS)" \
+		-e BRAINWRT_VERSION="$(BRAINWRT_VERSION)" \
 		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
 		bash -lc "rm -rf output/work/rootfs && mkdir -p output/work/rootfs && \
 			tar -xpf output/rootfs-$(PROFILE).tar -C output/work/rootfs && \
@@ -136,6 +137,31 @@ docker-image: check-rootfs-fresh docker-dtb docker-loop-clean
 # loop device は Docker Desktop VM 全体で共有される。kpartx を使うコンテナが
 # detach 前に終了すると残り、古い loop が 8 個あるだけで後続のイメージビルドが
 # すべて壊れるため、先に掃除する（ビルドを直列実行する場合だけ安全）。
+# 配布用の SD イメージを作って zip に固める。読者は「超クイックスタート」で
+# この成果物をダウンロードするだけで済む（README 参照）。
+#
+# 容量は 2048MiB(=2.15GB)。市販の「4GB」カードの実容量は 3.7GiB 程度しかなく、
+# 既定の 4096MiB(=4.29GB)では入らないため、リリース物はこの大きさで作る。
+# 大きなカードを活かしたい読者は brainwrt-data-grow を enable するか、
+# IMG_SIZE_M を上げて自分でビルドする。
+# カーネルのリリースと同じ形にそろえる。タグと zip 名は sd-<version> で、
+# イメージ内の /brainwrt_version にも同じ文字列を書き込む。
+SD_RELEASE_VERSION?=2026-08-13
+SD_RELEASE_SIZE_M?=2048
+
+.PHONY: sd-release
+sd-release:
+	$(MAKE) docker-image \
+		IMG_SIZE_M=$(SD_RELEASE_SIZE_M) \
+		BRAINWRT_VERSION=sd-$(SD_RELEASE_VERSION)
+	rm -f output/brain256-sd-$(SD_RELEASE_VERSION).zip output/brainwrt-sd.img
+	cp output/sd_wrt.img output/brainwrt-sd.img
+	cd output && zip -q -9 brain256-sd-$(SD_RELEASE_VERSION).zip brainwrt-sd.img
+	rm -f output/brainwrt-sd.img
+	@ls -lh output/brain256-sd-$(SD_RELEASE_VERSION).zip
+	@cd output && (sha256sum brain256-sd-$(SD_RELEASE_VERSION).zip 2>/dev/null \
+		|| shasum -a 256 brain256-sd-$(SD_RELEASE_VERSION).zip)
+
 .PHONY: docker-loop-clean
 docker-loop-clean:
 	docker run --rm --platform linux/amd64 --privileged $(DOCKER_IMAGE) \
