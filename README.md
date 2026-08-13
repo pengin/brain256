@@ -140,7 +140,9 @@ i.MX28 の USB コントローラ（ci_hdrc）は、OTG アダプターの ID �
 
 ### 起動直後（device role）
 
-Brain が起動すると `/etc/init.d/brainwrt-gadget` が NCM Ethernet gadget を UDC に結びつけます。Brain はホスト PC から USB Ethernet 機器として見えるので、ケーブル 1 本で SSH できます。
+Brain が起動すると `/etc/init.d/brainwrt-gadget` が NCM Ethernet gadget を UDC に結びつけ、続けて role を device に設定します。Brain はホスト PC から USB Ethernet 機器として見えるので、ケーブル 1 本で SSH できます。
+
+`usb-role-switch` を持つデバイスツリーでは、ci_hdrc は起動時に role を `none` にして待ちます。`none` のあいだポートはデバイスとして動かないため、この設定がないとホスト PC は Brain を認識しません。
 
 ホスト PC 側では、増えたネットワークインターフェースに固定 IP を割り当ててください。インターフェース名は環境によって変わるので、Brain を接続する前後で一覧を見比べて確認します。
 
