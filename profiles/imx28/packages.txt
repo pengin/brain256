@@ -51,5 +51,13 @@ alsa-utils
 # コンテナ基盤 brainwrt-ct が使う ujail(procd 付属)。
 procd-ujail
 
+# brainwrt-data-grow が p3(/data)を実カード容量まで広げるときに使う。
+# OpenWrt は e2fsprogs のバイナリを個別 ipk に分割していて、e2fsprogs 本体には
+# mkfs/fsck/e2fsck しか入らない。resize2fs は別パッケージなのでこう書く。
+# 依存(libext2fs2 など)は ImageBuilder が解決する。
+# donor 経路(build_rootfs.sh)は packages.txt を使わないため、そちらは従来どおり
+# scripts/fetch_data_grow_ipks.sh が集めた ipk を同梱してオフラインで入れる。
+resize2fs
+
 # カメラのユーザーランド(v4l-utils/fswebcam)はベースから外し、
 # /data/apps/webcam バンドルへ移設した(scripts/build_bundle.sh)。

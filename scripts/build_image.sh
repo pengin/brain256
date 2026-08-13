@@ -63,20 +63,33 @@ mkdir -p ${WORK}
 
 # U-Boot と nk.bin はビルドせず、fetch_boot.sh が取得したものを使う。
 # zip 内のファイル名は p1 での最終名と同じなので変換は要らない。
+#
+# BrainLILO は実機の型番から loader/gen3_N.bin を選ぶ。DTB は各モデルの U-Boot が
+# fdt_file=imx28-pwshN.dtb として持っている。つまり 1 枚の SD を複数機種で起動
+# させるには、対象モデルぶんの loader・nk・DTB がすべて要る。1 つでも欠けたまま
+# 焼くと、その機種でだけ起動しない SD が黙って出来上がる。イメージを作る前に
+# 揃っているか確かめる。
 for i in ${MODELS}; do
     NUM=$(echo $i | sed -E 's/sh//g')
     [ -f "${BOOT_DIR}/loader/gen3_${NUM}.bin" ] \
         || { echo "ERROR: ${BOOT_DIR}/loader/gen3_${NUM}.bin がありません" >&2
-             echo "  'make fetch-boot' を先に実行してください" >&2; exit 1; }
+             echo "  'make fetch-boot BRAIN_MODELS=\"${MODELS}\"' を先に実行してください" >&2; exit 1; }
+    # nk のファイル名は機種で綴りが違う（sh3=edsa3exe.bin、sh5=edsh5exe.bin）。
+    ls ${BOOT_DIR}/nk/eds*${NUM}exe.bin >/dev/null 2>&1 \
+        || { echo "ERROR: ${BOOT_DIR}/nk/ に pw${i} の eds*${NUM}exe.bin がありません" >&2
+             echo "  'make fetch-boot BRAIN_MODELS=\"${MODELS}\"' を先に実行してください" >&2; exit 1; }
+    [ -f "${DTB_DIR}/imx28-pw${i}.dtb" ] \
+        || { echo "ERROR: ${DTB_DIR}/imx28-pw${i}.dtb がありません" >&2
+             echo "  'make docker-dtb BRAIN_MODELS=\"${MODELS}\"' を先に実行してください" >&2; exit 1; }
 done
 
 dd if=/dev/zero of=${IMG} bs=1M count=${SIZE_M}
 
 # 3 パーティション: p1=boot(FAT)、p2=rootfs(固定)、p3=data(残り全部)。
 # /data（brainwrt-ct のバンドル置き場）を rootfs から分離し、rootfs を再フラッシュ
-# してもバンドル／データが残るようにする。p3 はイメージ内では残り全部だが、
-# 初回ブートで SD カードの実容量まで拡張する（profiles の data-grow oneshot、
-# 実機検証後に追加）。
+# してもバンドル／データが残るようにする。p3 はこのイメージの中では残り全部で、
+# SD カードの実容量まで広げるかどうかは実機側の判断に委ねる（profiles の
+# brainwrt-data-grow。MBR を書き換えて自分で reboot するため、既定では無効）。
 START1=2048
 SECTORS1=$((1024 * 1024 * 64 / 512))          # boot パーティション (64 MB)
 ROOTFS_M=${ROOTFS_PART_M:-160}                # rootfs パーティションサイズ (MB)
@@ -116,10 +129,8 @@ sudo cp ${WORK}/brainwrt_version ${WORK}/p1/
 echo "kernel: ${KERNEL_DIR}/zImage"
 sudo cp "${KERNEL_DIR}/zImage" ${WORK}/p1/
 
+# 存在は冒頭の事前チェックで確かめてある。ここは配置するだけ。
 for i in ${MODELS}; do
-    [ -f "${DTB_DIR}/imx28-pw${i}.dtb" ] \
-        || { echo "ERROR: ${DTB_DIR}/imx28-pw${i}.dtb がありません" >&2
-             echo "  'make docker-dtb' を先に実行してください" >&2; exit 1; }
     echo "dtb (pw${i}): patched (${DTB_DIR})"
     sudo cp "${DTB_DIR}/imx28-pw${i}.dtb" ${WORK}/p1/
 done

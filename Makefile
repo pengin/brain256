@@ -12,12 +12,17 @@ export KERNEL_RELEASE
 # 別の場所の DTB を使う場合は DTB_SRC_DIR を /work 配下のパスで上書きする。
 DTB_SRC_DIR?=/work/cache/kernel
 # p1=boot(64M)+p2=rootfs(ROOTFS_PART_M、build_image.sh の既定は 160M)+
-# p3=data(残り全部)。実機に fdisk 相当のツールがないため、初回ブートでは
-# brainwrt-data-grow が MBR を直接書き換え、p3 を実カード容量まで拡張する。
+# p3=data(残り全部)。p3 はこのイメージのサイズまでしか無い。SD カードの実容量
+# まで広げる brainwrt-data-grow は既定で無効にしてある（実機で明示的に enable
+# する）。使うカードが大きいなら、ここを増やしておくのが手軽である。
 IMG_SIZE_M?=4096
-# 起動用 payload を作る Brain のモデル。既定は手元の実機である sh3 のみ。
-# 全モデルは a7200 a7400 sh1..sh7。
-BRAIN_MODELS?=sh3
+# 起動用 payload を作る Brain のモデル。既定で sh1-sh7 すべてを入れる。
+# BrainLILO は実機の型番から loader/gen3_N.bin を選ぶので、全モデルぶんを置いて
+# おけば 1 枚の SD をどの機種でも起動できる。増える容量は 7 MB ほどで、64 MB の
+# boot パーティションに十分収まる。
+# a7200/a7400 は入れられない。この 2 機種の nk は名前が同じ edna3exe.bin で
+# 中身が違うため、1 枚の SD に同居できない。
+BRAIN_MODELS?=sh1 sh2 sh3 sh4 sh5 sh6 sh7
 
 # OpenWrt のリリースを固定する。更新時は意図的に変更し、実機で再テストする。
 export OPENWRT_VERSION?=24.10.7
