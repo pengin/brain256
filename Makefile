@@ -39,6 +39,21 @@ fetch-boot:
 docker-build:
 	docker build --platform linux/amd64 -t $(DOCKER_IMAGE) -f Dockerfile .
 
+# ここから下はメンテナ専用。読者は実行しない（カーネルは fetch-kernel で取得する）。
+KERNEL_DOCKER_IMAGE=brainwrt-kernel-builder
+KERNEL_VERSION?=6.1.70-1
+
+.PHONY: kernel-builder
+kernel-builder:
+	docker build --platform linux/amd64 -t $(KERNEL_DOCKER_IMAGE) -f Dockerfile.kernel .
+
+.PHONY: kernel-release
+kernel-release: kernel-builder
+	docker run --rm --platform linux/amd64 \
+		-e KERNEL_VERSION="$(KERNEL_VERSION)" \
+		-v "$$PWD":/work -w /work $(KERNEL_DOCKER_IMAGE) \
+		bash -lc "./scripts/build_kernel.sh"
+
 # donor SD イメージから rootfs パーティションを取り出し、OpenWrt のカーネル
 # モジュールを削除する（実際には linux-brain のカーネルを使うため）。profile の
 # overlay を適用して output/rootfs-$(PROFILE).tar を作る。rootfs のツリーは
