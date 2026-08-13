@@ -1,12 +1,12 @@
 #!/bin/bash
-# buildbrain がビルドした DTB へ usb-role-switch 等を足し、output/dtb/ へ書き出す。
-# buildbrain のツリーは読むだけで書き換えない。
+# fetch_kernel.sh が取得した DTB へ usb-role-switch 等を足し、output/dtb/ へ書き出す。
+# 取得元の DTB は読むだけで書き換えない。
 set -ueo pipefail
 
 PROFILE="${1:-imx28}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 CONF="${REPO}/profiles/${PROFILE}/dtb-patch.conf"
-SRC_DIR="${DTB_SRC_DIR:-/buildbrain/linux-brain/arch/arm/boot/dts}"
+SRC_DIR="${DTB_SRC_DIR:-/work/cache/kernel}"
 OUT_DIR="${DTB_OUT_DIR:-${REPO}/output/dtb}"
 MODELS="${BRAIN_MODELS:-sh3}"
 

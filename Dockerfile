@@ -19,6 +19,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libarchive-tools \
         kpartx \
         util-linux \
+        fdisk \
+        dosfstools \
+        sudo \
         e2fsprogs \
         rsync \
         build-essential \

@@ -9,31 +9,36 @@
 # 改変部分の Copyright (c) 2026 pengin、ライセンスは同じく MIT。
 # NOTICE.md 参照。
 #
-# buildbrain-builder:local 内で実行し、buildbrain リポジトリは BUILDBRAIN_ROOT
-#（既定 /work）に置かれているものとする。Makefile の docker-image ターゲット参照。
+# brainwrt-builder 内で実行し、brain256 のリポジトリが /work に mount されている
+# ものとする。Makefile の docker-image ターゲット参照。カーネル・U-Boot・BrainLILO は
+# いずれもビルドせず、fetch-kernel と fetch-boot が取得したものを組み立てる。
 #
 # BRAIN_MODELS で U-Boot/nk.bin と DTB を作る Brain モデルを選ぶ。既定は手元の
 # 実機だけである sh3。全モデルは次のとおり。
-#   a7200 a7400 sh1 sh2 sh3 sh4 sh5 sh6 sh7
+#   sh1 sh2 sh3 sh4 sh5 sh6 sh7
+#   （a7200/a7400 は配布物が揃わないため本リポジトリでは扱わない）
 #
-# カーネル（zImage）とモデルごとの DTB は buildbrain ツリーでビルドした
-# linux-brain（6.1.70）から取得する。本の 3.2 参照。
+# カーネル（zImage）とモデルごとの DTB は linux-brain（6.1.70）由来のもので、
+# scripts/fetch_kernel.sh が buildbrain のリリースから取得する。本の 3.2 参照。
 set -uex -o pipefail
 
 show_help() {
     cat << 'EOF'
 Usage: build_image.sh ROOTFS IMG_NAME SIZE_M
 
-Build a bootable brainwrt SD image using buildbrain's artifacts.
+Build a bootable brainwrt SD image from prefetched artifacts.
 
 Arguments:
-  ROOTFS       Rootfs directory relative to the buildbrain repo root.
-  IMG_NAME     Output image filename (created under buildbrain/image/).
+  ROOTFS       Extracted rootfs directory (default: output/work/rootfs).
+  IMG_NAME     Output image filename (created under output/).
   SIZE_M       Image size in megabytes.
 
 Environment:
-  BRAIN_MODELS     Space-separated model list (default: "sh3").
-  BUILDBRAIN_ROOT  buildbrain repo root (default: /work).
+  BRAIN_MODELS         Space-separated model list (default: "sh3").
+  BRAINWRT_OUTPUT_DIR  Output directory (default: /work/output).
+  BRAINWRT_BOOT_DIR    Prebuilt bootloader dir (default: /work/cache/boot).
+  BRAINWRT_KERNEL_DIR  Kernel dir (default: /work/cache/kernel).
+  BRAINWRT_DTB_DIR     Patched DTB dir (default: /work/output/dtb).
 EOF
 }
 
@@ -42,49 +47,27 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || -z "${1:-}" ]]; then
     exit 0
 fi
 
-JOBS=${IMG_BUILD_JOBS:-$(nproc)}
-REPO=${BUILDBRAIN_ROOT:-/work}
-WORK=${REPO}/image/work
-LINUX=${REPO}/linux-brain
-ROOTFS=${1:-rootfs}
+OUT=${BRAINWRT_OUTPUT_DIR:-/work/output}
+WORK=${OUT}/work
+ROOTFS=${1:-output/work/rootfs}
 IMG_NAME=${2:-sd_wrt.img}
-IMG=${REPO}/image/${IMG_NAME}
+IMG=${OUT}/${IMG_NAME}
 SIZE_M=${3:-512}
 MODELS=${BRAIN_MODELS:-sh3}
-export CROSS_COMPILE=arm-linux-gnueabi-
+# 起動用のビルド済みバイナリ。scripts/fetch_boot.sh が配置する。
+BOOT_DIR=${BRAINWRT_BOOT_DIR:-/work/cache/boot}
+KERNEL_DIR=${BRAINWRT_KERNEL_DIR:-/work/cache/kernel}
+DTB_DIR=${BRAINWRT_DTB_DIR:-/work/output/dtb}
 
 mkdir -p ${WORK}
-mkdir -p ${WORK}/lilobin
-# 以前の（全モデルを含む可能性がある）実行で残った payload が、下のワイルドカード
-# コピー経由で p1/nk と p1/loader に混入しないようにする。
-rm -f ${WORK}/*.bin ${WORK}/lilobin/*.bin
 
+# U-Boot と nk.bin はビルドせず、fetch_boot.sh が取得したものを使う。
+# zip 内のファイル名は p1 での最終名と同じなので変換は要らない。
 for i in ${MODELS}; do
     NUM=$(echo $i | sed -E 's/sh//g')
-    BUILD_DIR=${WORK}/uboot-build-${i}
-
-    rm -rf ${BUILD_DIR}
-    rsync -a --exclude '.git' ${REPO}/u-boot-brain/ ${BUILD_DIR}/
-    make -C ${BUILD_DIR} pw${i}_defconfig
-    make -j${JOBS} -C ${BUILD_DIR} u-boot.bin
-    ${REPO}/nkbin_maker/bsd-ce ${BUILD_DIR}/u-boot.bin
-
-    case $i in
-        "a7200")
-            mv ${REPO}/nk.bin ${WORK}/edna3exe.bin
-            mv ${BUILD_DIR}/u-boot.bin ${WORK}/lilobin/gen2.bin;;
-        "a7400")
-            mv ${BUILD_DIR}/u-boot.bin ${WORK}/lilobin/gen2_7400.bin;;
-        "sh1" | "sh2" | "sh3")
-            mv ${REPO}/nk.bin ${WORK}/edsa${NUM}exe.bin
-            mv ${BUILD_DIR}/u-boot.bin ${WORK}/lilobin/gen3_${NUM}.bin;;
-        "sh4" | "sh5" | "sh6" | "sh7")
-            mv ${REPO}/nk.bin ${WORK}/edsh${NUM}exe.bin
-            mv ${BUILD_DIR}/u-boot.bin ${WORK}/lilobin/gen3_${NUM}.bin;;
-        *)
-            echo "unknown model: $i"
-            exit 1;;
-    esac
+    [ -f "${BOOT_DIR}/loader/gen3_${NUM}.bin" ] \
+        || { echo "ERROR: ${BOOT_DIR}/loader/gen3_${NUM}.bin がありません" >&2
+             echo "  'make fetch-boot' を先に実行してください" >&2; exit 1; }
 done
 
 dd if=/dev/zero of=${IMG} bs=1M count=${SIZE_M}
@@ -130,51 +113,43 @@ sudo mount /dev/mapper/${LOOPDEV}p2 ${WORK}/p2
 echo ${BRAINWRT_VERSION:-unknown} > ${WORK}/brainwrt_version
 sudo cp ${WORK}/brainwrt_version ${WORK}/p1/
 
-KERNEL_DIR="${BRAINWRT_KERNEL_DIR:-}"
-if [ -n "${KERNEL_DIR}" ] && [ -f "${KERNEL_DIR}/zImage" ]; then
-    echo "kernel: release (${KERNEL_DIR}/zImage)"
-    sudo cp "${KERNEL_DIR}/zImage" ${WORK}/p1/
-else
-    echo "kernel: linux-brain (${LINUX}/arch/arm/boot/zImage)"
-    sudo cp ${LINUX}/arch/arm/boot/zImage ${WORK}/p1/
-fi
+echo "kernel: ${KERNEL_DIR}/zImage"
+sudo cp "${KERNEL_DIR}/zImage" ${WORK}/p1/
 
-DTB_PATCHED="${BRAINWRT_DTB_DIR:-/brainwrt-output/dtb}"
 for i in ${MODELS}; do
-    if [ -f "${DTB_PATCHED}/imx28-pw${i}.dtb" ]; then
-        echo "dtb (pw${i}): patched (${DTB_PATCHED})"
-        sudo cp "${DTB_PATCHED}/imx28-pw${i}.dtb" ${WORK}/p1/
-    else
-        echo "dtb (pw${i}): linux-brain (パッチ未適用 -- 'make docker-dtb' を先に実行してください)"
-        sudo cp ${LINUX}/arch/arm/boot/dts/imx28-pw${i}.dtb ${WORK}/p1/
-    fi
+    [ -f "${DTB_DIR}/imx28-pw${i}.dtb" ] \
+        || { echo "ERROR: ${DTB_DIR}/imx28-pw${i}.dtb がありません" >&2
+             echo "  'make docker-dtb' を先に実行してください" >&2; exit 1; }
+    echo "dtb (pw${i}): patched (${DTB_DIR})"
+    sudo cp "${DTB_DIR}/imx28-pw${i}.dtb" ${WORK}/p1/
 done
+
 sudo mkdir -p ${WORK}/p1/nk
-sudo cp ${WORK}/*.bin ${WORK}/p1/nk/
+sudo cp ${BOOT_DIR}/nk/*.bin ${WORK}/p1/nk/
 
 # ステージング済みの .ipk があればブートパーティションへ置き、ネットワークなしで
 # 実機にインストールできるようにする（Brain 自体には Ethernet も Wi-Fi もない）。
 # 実行前に output/ipk/ へ置く。ディレクトリがないか空なら省略する。
-IPK_DIR=${IPK_DIR:-/brainwrt-output/ipk}
+IPK_DIR=${IPK_DIR:-/work/output/ipk}
 if ls ${IPK_DIR}/*.ipk >/dev/null 2>&1; then
     sudo cp ${IPK_DIR}/*.ipk ${WORK}/p1/
 fi
 
-make -C ${REPO}/brainlilo
-
+# BrainLILO もビルドせず fetch_boot.sh が取得したものを使う。
+# AppMain_.exe は BrainLILO 本体、AppMain.exe は exeopener である。入れ替えると起動しない。
 LILO="${WORK}/p1/アプリ/Launch Linux"
 sudo mkdir -p "${LILO}"
 sudo touch "${LILO}/index.din"
 sudo touch "${LILO}/AppMain.cfg"
-sudo cp ${REPO}/brainlilo/*.dll "${LILO}/"
-sudo cp ${REPO}/brainlilo/BrainLILO.exe "${LILO}/AppMain_.exe"
-gzip -cd ${REPO}/image/exeopener.exe.gz > ${REPO}/image/exeopener.exe
-sudo cp ${REPO}/image/exeopener.exe "${LILO}/AppMain.exe"
+sudo cp ${BOOT_DIR}/lilo/BrainLILO.dll "${LILO}/"
+sudo cp ${BOOT_DIR}/lilo/BrainLILODrv.dll "${LILO}/"
+sudo cp ${BOOT_DIR}/lilo/AppMain_.exe "${LILO}/"
+sudo cp ${BOOT_DIR}/lilo/AppMain.exe "${LILO}/"
 
 sudo mkdir -p ${WORK}/p1/loader
-sudo cp ${WORK}/lilobin/*.bin ${WORK}/p1/loader/
+sudo cp ${BOOT_DIR}/loader/*.bin ${WORK}/p1/loader/
 
-sudo cp -a "${REPO}/${ROOTFS}/." "${WORK}/p2/"
+sudo cp -a "${ROOTFS}/." "${WORK}/p2/"
 
 sudo umount ${WORK}/p1 ${WORK}/p2
 sudo kpartx -d ${IMG}

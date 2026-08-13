@@ -5,6 +5,19 @@
 # SSH: root@192.168.28.2。
 START=15
 
+USB_ROLE_DIR="${USB_ROLE_DIR:-/sys/class/usb_role}"
+
+# usb-role-switch を持つ DT では、ci_hdrc は起動時に role を none にして待つ。
+# none のあいだポートはデバイスとして動かないので、gadget を結びつけても
+# ホスト PC は Brain を認識しない。起動時に device role を選ぶ。
+# host に切り替えたい場合は brainwrt-usb-mode host を実行する。
+gadget_set_role() {
+    SW=$(ls "$USB_ROLE_DIR" 2>/dev/null | head -n1)
+    [ -n "$SW" ] || { logger -t gadget "no usb_role_switch device"; return 0; }
+    echo device > "$USB_ROLE_DIR/$SW/role" || return 1
+    logger -t gadget "usb role set to device ($SW)"
+}
+
 boot() {
     grep -q configfs /proc/filesystems || {
         logger -t gadget "configfs not available"; return 0; }
@@ -30,4 +43,8 @@ boot() {
     ln -s $G/functions/ncm.usb0 $G/configs/c.1/
     echo "$UDC" > $G/UDC
     logger -t gadget "NCM gadget bound to $UDC"
+
+    # gadget を結びつけてから role を選ぶ。逆順にすると、ホスト PC が
+    # enumerate を始めた時点で gadget が未設定ということが起こりうる。
+    gadget_set_role
 }
