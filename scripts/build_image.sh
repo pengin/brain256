@@ -63,11 +63,24 @@ mkdir -p ${WORK}
 
 # U-Boot と nk.bin はビルドせず、fetch_boot.sh が取得したものを使う。
 # zip 内のファイル名は p1 での最終名と同じなので変換は要らない。
+#
+# BrainLILO は実機の型番から loader/gen3_N.bin を選ぶ。DTB は各モデルの U-Boot が
+# fdt_file=imx28-pwshN.dtb として持っている。つまり 1 枚の SD を複数機種で起動
+# させるには、対象モデルぶんの loader・nk・DTB がすべて要る。1 つでも欠けたまま
+# 焼くと、その機種でだけ起動しない SD が黙って出来上がる。イメージを作る前に
+# 揃っているか確かめる。
 for i in ${MODELS}; do
     NUM=$(echo $i | sed -E 's/sh//g')
     [ -f "${BOOT_DIR}/loader/gen3_${NUM}.bin" ] \
         || { echo "ERROR: ${BOOT_DIR}/loader/gen3_${NUM}.bin がありません" >&2
-             echo "  'make fetch-boot' を先に実行してください" >&2; exit 1; }
+             echo "  'make fetch-boot BRAIN_MODELS=\"${MODELS}\"' を先に実行してください" >&2; exit 1; }
+    # nk のファイル名は機種で綴りが違う（sh3=edsa3exe.bin、sh5=edsh5exe.bin）。
+    ls ${BOOT_DIR}/nk/eds*${NUM}exe.bin >/dev/null 2>&1 \
+        || { echo "ERROR: ${BOOT_DIR}/nk/ に pw${i} の eds*${NUM}exe.bin がありません" >&2
+             echo "  'make fetch-boot BRAIN_MODELS=\"${MODELS}\"' を先に実行してください" >&2; exit 1; }
+    [ -f "${DTB_DIR}/imx28-pw${i}.dtb" ] \
+        || { echo "ERROR: ${DTB_DIR}/imx28-pw${i}.dtb がありません" >&2
+             echo "  'make docker-dtb BRAIN_MODELS=\"${MODELS}\"' を先に実行してください" >&2; exit 1; }
 done
 
 dd if=/dev/zero of=${IMG} bs=1M count=${SIZE_M}
@@ -116,10 +129,8 @@ sudo cp ${WORK}/brainwrt_version ${WORK}/p1/
 echo "kernel: ${KERNEL_DIR}/zImage"
 sudo cp "${KERNEL_DIR}/zImage" ${WORK}/p1/
 
+# 存在は冒頭の事前チェックで確かめてある。ここは配置するだけ。
 for i in ${MODELS}; do
-    [ -f "${DTB_DIR}/imx28-pw${i}.dtb" ] \
-        || { echo "ERROR: ${DTB_DIR}/imx28-pw${i}.dtb がありません" >&2
-             echo "  'make docker-dtb' を先に実行してください" >&2; exit 1; }
     echo "dtb (pw${i}): patched (${DTB_DIR})"
     sudo cp "${DTB_DIR}/imx28-pw${i}.dtb" ${WORK}/p1/
 done

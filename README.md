@@ -48,7 +48,7 @@ brain256
 クイックスタート
 ----------------
 
-以下は ImageBuilder を使う経路（本の 3.2）で、既定の対象モデル PW-Sx3 の SD イメージを作る手順です。すべてのコマンドをホスト PC のリポジトリ直下で実行します。
+以下は ImageBuilder を使う経路（本の 3.2）で、PW-SH1 から PW-SH7 のどれでも起動できる SD イメージを作る手順です。すべてのコマンドをホスト PC のリポジトリ直下で実行します。
 
 このリポジトリだけで完結します。他のリポジトリを複製する必要はありません。
 
@@ -73,7 +73,11 @@ make fetch-boot
 
 > **対応機種について**
 >
-> `BRAIN_MODELS` に指定できるのは `sh1` から `sh7`、`a7200`、`a7400` です。ただし**実機で動作を確認しているのは PW-SH3 のみ**で、他は未検証です。PW-A7200 / A7400 は usb0 が host のままなので、`brainwrt-usb-mode` によるロール切り替えは使えません（検証できる実機がないため据え置いています）。
+> `BRAIN_MODELS` には `sh1` から `sh7` を指定できます。既定はこの 7 機種すべてです。1 枚の SD にすべてのモデルの payload を入れておけば、BrainLILO が実機の型番を見て正しい U-Boot を選ぶため、同じカードをどの機種に挿しても起動します。
+>
+> ただし**筆者が実機で動作を確認しているのは PW-SH3 のみ**です。他の 6 機種については、起動に必要なファイルが揃っていることをビルド時に検査しているだけで、実機での確認は取れていません。
+>
+> PW-A7200 / A7400 は扱いません。この 2 機種の nk は名前が同じ `edna3exe.bin` で中身が違うため、1 枚の SD に同居できないからです。usb0 が host のままで `brainwrt-usb-mode` によるロール切り替えを使えないという制約もあります（どちらも検証できる実機がないため据え置いています）。
 
 ### 2. brain256 のビルダーと OpenWrt ImageBuilder を用意する
 
@@ -123,11 +127,13 @@ make docker-build fetch-kernel fetch-boot fetch-ib docker-rootfs-ib docker-image
 
 `make docker-image` は `make docker-dtb` を先に実行し、取得した DTB へ `dr_mode = "otg"` と `usb-role-switch` を追加します。この 2 つがないと、共通の `imx28-brain.dtsi` が usb0 を host に固定したままになり、実機の `brainwrt-usb-mode` が `/sys/class/usb_role` を見つけられません。カーネルは再ビルドしません。
 
-OpenWrt のバージョンは `Makefile` の `OPENWRT_VERSION`（既定 24.10.7）で固定しています。対象モデルは `BRAIN_MODELS`（既定 `sh3`）で選びます。
+OpenWrt のバージョンは `Makefile` の `OPENWRT_VERSION`（既定 24.10.7）で固定しています。対象モデルは `BRAIN_MODELS`（既定 `sh1 sh2 sh3 sh4 sh5 sh6 sh7`）で選びます。手元の機種だけに絞ってイメージを小さくしたい場合は、次のように指定します。
 
 ```sh
-make docker-image BRAIN_MODELS="sh1 sh2 sh3 sh4 sh5 sh6 sh7 a7200 a7400"
+make fetch-boot docker-image BRAIN_MODELS="sh3"
 ```
+
+`fetch-boot` と `docker-image` には同じ `BRAIN_MODELS` を渡してください。`fetch-boot` が取得済みのモデルより多くを `docker-image` に指定した場合は、イメージを作る前に不足を報告して止まります。
 
 ドナーイメージから rootfs を取り出す経路（本 3.1）を使う場合は、`make fetch` と `make docker-rootfs` に読み替えてください。
 
@@ -140,7 +146,7 @@ i.MX28 の USB コントローラ（ci_hdrc）は、OTG アダプターの ID �
 
 ### 起動直後（device role）
 
-Brain が起動すると `/etc/init.d/brainwrt-gadget` が NCM Ethernet gadget を UDC に結びつけ、続けて role を device に設定します。Brain はホスト PC から USB Ethernet 機器として見えるので、ケーブル 1 本で SSH できます。
+USB ケーブルでホスト PC とつないだ状態で Brain が起動すると、 `/etc/init.d/brainwrt-gadget` が NCM Ethernet gadget を UDC に結びつけ、続けて role を device に設定します。Brain はホスト PC から USB Ethernet 機器として見えるので、ケーブル 1 本で SSH できます。
 
 `usb-role-switch` を持つデバイスツリーでは、ci_hdrc は起動時に role を `none` にして待ちます。`none` のあいだポートはデバイスとして動かないため、この設定がないとホスト PC は Brain を認識しません。
 

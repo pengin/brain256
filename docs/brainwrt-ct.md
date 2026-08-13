@@ -6,7 +6,7 @@
 
 ## 1. 対象と前提
 
-- 対象モデルは `Makefile` の既定値 `BRAIN_MODELS=sh3`、すなわち PW-SH3 です。
+- 対象モデルは `Makefile` の既定値 `BRAIN_MODELS=sh1 sh2 sh3 sh4 sh5 sh6 sh7`、すなわち PW-SH1 から PW-SH7 です。ただし筆者が実機で確認しているのは PW-SH3 のみです。
 - rootfs は OpenWrt 24.10.7 系の `mxs` / `arm_arm926ej-s` をベースにします。パッケージ管理には `opkg` を使います。
 - カーネル、U-Boot、BrainLILO は、brain-hackers が公開しているビルド済みの配布物を取得して使います（`make fetch-kernel` / `make fetch-boot`）。このリポジトリでは変更しません。
 - デバイス上のバンドルは `/data/apps/<name>/` に置きます。
