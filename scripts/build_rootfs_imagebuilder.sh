@@ -59,6 +59,14 @@ fi
 # M2 までは linux-brain の zImage を使うため、OpenWrt の kmod はロードできない。
 rm -rf "${ROOTFS}/lib/modules" "${ROOTFS}/boot"/*
 
+# ImageBuilder は rootfs を仕上げるときに、/etc/init.d/ にある rc.common
+# スクリプトをすべて enable する。overlay に自動起動リンクを置かなくても
+# 復活してしまうので、ここで外す。本体は残すため、実機で
+# `/etc/init.d/brainwrt-data-grow enable` すれば使える。
+# 既定で動かさない理由は同スクリプトの先頭を参照（MBR を書き換えて自分で
+# reboot するため、初回起動の途中で予告なく再起動する）。
+rm -f "${ROOTFS}"/etc/rc.d/S*brainwrt-data-grow
+
 # --- 5. パッケージ化 --------------------------------------------------------
 mkdir -p "$(dirname "${OUT}")"
 bsdtar -cpf "${OUT}" -C "${ROOTFS}" .

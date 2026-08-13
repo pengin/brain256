@@ -87,9 +87,9 @@ dd if=/dev/zero of=${IMG} bs=1M count=${SIZE_M}
 
 # 3 パーティション: p1=boot(FAT)、p2=rootfs(固定)、p3=data(残り全部)。
 # /data（brainwrt-ct のバンドル置き場）を rootfs から分離し、rootfs を再フラッシュ
-# してもバンドル／データが残るようにする。p3 はイメージ内では残り全部だが、
-# 初回ブートで SD カードの実容量まで拡張する（profiles の data-grow oneshot、
-# 実機検証後に追加）。
+# してもバンドル／データが残るようにする。p3 はこのイメージの中では残り全部で、
+# SD カードの実容量まで広げるかどうかは実機側の判断に委ねる（profiles の
+# brainwrt-data-grow。MBR を書き換えて自分で reboot するため、既定では無効）。
 START1=2048
 SECTORS1=$((1024 * 1024 * 64 / 512))          # boot パーティション (64 MB)
 ROOTFS_M=${ROOTFS_PART_M:-160}                # rootfs パーティションサイズ (MB)

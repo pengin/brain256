@@ -137,6 +137,19 @@ make fetch-boot docker-image BRAIN_MODELS="sh3"
 
 ドナーイメージから rootfs を取り出す経路（本 3.1）を使う場合は、`make fetch` と `make docker-rootfs` に読み替えてください。
 
+### データ領域（p3）の大きさ
+
+`/data` になる p3 の大きさは、イメージのサイズ（`IMG_SIZE_M`、既定 4096 MB）から boot と rootfs を引いた残りです。SD カードがそれより大きくても、**p3 は自動では広がりません**。
+
+パーティションを拡張するための `brainwrt-data-grow` は同梱していますが、ユーザーの指示があるまでは動きません。このサービスは MBR を書き換えたあと、新しいサイズをカーネルに読ませるために自分で再起動し、予告なく再起動が起きると故障を疑うことになるためです。実機で広げたくなったら、明示的に有効化してください。
+
+```sh
+/etc/init.d/brainwrt-data-grow enable
+reboot
+```
+
+有効化してから拡張が終わるまでに再起動が 2 回起きます。詳しくは [docs/brainwrt-ct.md](docs/brainwrt-ct.md) を参照してください。大きなカードを使うと最初から分かっているなら、`make docker-image IMG_SIZE_M=16384` のようにイメージ自体を大きく作るほうが簡単です。
+
 USB を切り替えて使う
 --------------------
 
