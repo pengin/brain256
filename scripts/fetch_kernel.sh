@@ -1,30 +1,26 @@
 #!/bin/bash
-# buildbrain のリリースからカーネル(zImage)とモデルごとの DTB を取得する。
-# カーネルをビルドせずに SD イメージを作るための経路。sh1-sh7 のみ対応。
+# 本リポジトリのリリースからカーネル(zImage)とモデルごとの DTB を取得する。
+# カーネルをビルドせずに SD イメージを作るための経路。
+#
+# 上流 buildbrain のリリースを使わないのは、そちらにコンテナ基盤に必要な
+# CONFIG_OVERLAY_FS などが入っておらず brainwrt-ct が動かないため。
+# 配布物は scripts/build_kernel.sh が作る(メンテナ専用)。
 set -ueo pipefail
 
+PROFILE="${1:-imx28}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-RELEASE="${BUILDBRAIN_RELEASE:-2026-03-25-024518}"
-EXPECTED="${BUILDBRAIN_KERNEL_SHA256:-da7a8f87c6daf982085c2f7042d874654645a28a6318558d3c6ea0e6a2851f69}"
+RELEASE="${KERNEL_RELEASE:-kernel-6.1.70-1}"
+VERSION="${KERNEL_VERSION:-6.1.70-1}"
 CACHE_DIR="${KERNEL_CACHE_DIR:-${REPO}/cache}"
 DEST="${KERNEL_DIR:-${REPO}/cache/kernel}"
+SUMS="${ARTIFACTS_SHA256:-${REPO}/profiles/${PROFILE}/artifacts.sha256}"
 MODELS="${BRAIN_MODELS:-sh3}"
 
-# a7200/a7400 の DTB はリリースに入っていない。黙って欠けたイメージを作らせない。
-for m in ${MODELS}; do
-    case "${m}" in
-        sh1|sh2|sh3|sh4|sh5|sh6|sh7) ;;
-        *)
-            echo "error: この経路は sh1-sh7 のみ対応です (${m} の DTB はリリースに含まれない)" >&2
-            echo "       他機種向けには linux-brain を init して 'make docker-kernel' を実行してください" >&2
-            exit 1;;
-    esac
-done
-
-ZIP_NAME="linux-${RELEASE}.zip"
+ZIP_NAME="brain256-kernel-${VERSION}.zip"
 ZIP="${CACHE_DIR}/${ZIP_NAME}"
-URL="https://github.com/brain-hackers/buildbrain/releases/download/${RELEASE}/${ZIP_NAME}"
+URL="https://github.com/pengin/brain256/releases/download/${RELEASE}/${ZIP_NAME}"
 
+[ -f "${SUMS}" ] || { echo "error: ${SUMS} がありません" >&2; exit 1; }
 mkdir -p "${CACHE_DIR}"
 if [ -f "${ZIP}" ]; then
     echo "Already cached: ${ZIP}"
@@ -34,6 +30,8 @@ else
     mv "${ZIP}.part" "${ZIP}"
 fi
 
+EXPECTED=$(awk -v k="${ZIP_NAME}" '$2 == k {print $1}' "${SUMS}")
+[ -n "${EXPECTED}" ] || { echo "error: ${ZIP_NAME} が ${SUMS} にありません" >&2; exit 1; }
 ACTUAL=$(shasum -a 256 "${ZIP}" 2>/dev/null | awk '{print $1}' || sha256sum "${ZIP}" | awk '{print $1}')
 if [ "${EXPECTED}" != "${ACTUAL}" ]; then
     echo "error: sha256 mismatch for ${ZIP_NAME}" >&2

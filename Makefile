@@ -1,9 +1,13 @@
 DOCKER_IMAGE=brainwrt-builder
 ROOTFS_VOLUME=brainwrt-rootfs
 PROFILE?=imx28
-# カーネル・DTB・U-Boot を取る buildbrain のリリース。
+# U-Boot と BrainLILO を取る buildbrain のリリース。
 BUILDBRAIN_RELEASE?=2026-03-25-024518
 export BUILDBRAIN_RELEASE
+# カーネルは本リポジトリ自身がビルドして配布する。上流のリリースには
+# コンテナ基盤に必要な設定が入っておらず brainwrt-ct が動かないため。
+KERNEL_RELEASE?=kernel-6.1.70-1
+export KERNEL_RELEASE
 # docker-dtb は $$PWD を /work へ mount するので cache/ は /work/cache で見える。
 # 別の場所の DTB を使う場合は DTB_SRC_DIR を /work 配下のパスで上書きする。
 DTB_SRC_DIR?=/work/cache/kernel
@@ -29,7 +33,7 @@ fetch-ib:
 
 .PHONY: fetch-kernel
 fetch-kernel:
-	BRAIN_MODELS="$(BRAIN_MODELS)" ./scripts/fetch_kernel.sh
+	BRAIN_MODELS="$(BRAIN_MODELS)" ./scripts/fetch_kernel.sh $(PROFILE)
 
 .PHONY: fetch-boot
 fetch-boot:

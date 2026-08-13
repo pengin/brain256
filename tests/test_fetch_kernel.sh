@@ -12,22 +12,27 @@ trap 'rm -rf "$WORK"' EXIT
 CACHE="$WORK/cache"; DEST="$WORK/kernel"
 mkdir -p "$CACHE/release"
 
-RELEASE=test-release
+VER=9.9.9-test
+SUMS="$WORK/artifacts.sha256"
 # 本物と同じ構造(release/ 配下に zImage と DTB)のダミー zip を作る
 echo "dummy-kernel" > "$CACHE/release/zImage"
 for m in 1 2 3 4 5 6 7; do echo "dummy-dtb-$m" > "$CACHE/release/imx28-pwsh$m.dtb"; done
-(cd "$CACHE" && zip -qr "linux-${RELEASE}.zip" release)
+(cd "$CACHE" && zip -qr "brain256-kernel-${VER}.zip" release)
 rm -rf "$CACHE/release"
 
-SHA=$(shasum -a 256 "$CACHE/linux-${RELEASE}.zip" 2>/dev/null | awk '{print $1}' \
-      || sha256sum "$CACHE/linux-${RELEASE}.zip" | awk '{print $1}')
+SHA=$(shasum -a 256 "$CACHE/brain256-kernel-${VER}.zip" 2>/dev/null | awk '{print $1}' \
+      || sha256sum "$CACHE/brain256-kernel-${VER}.zip" | awk '{print $1}')
+echo "$SHA  brain256-kernel-${VER}.zip" > "$SUMS"
 
 fail() { echo "FAIL: $1"; exit 1; }
+run() {
+    KERNEL_RELEASE="kernel-${VER}" KERNEL_VERSION="${VER}" \
+        KERNEL_CACHE_DIR="$CACHE" KERNEL_DIR="$DEST" ARTIFACTS_SHA256="$SUMS" \
+        BRAIN_MODELS="sh3" "$REPO/scripts/fetch_kernel.sh" imx28
+}
 
 # 1. sha256 が一致すれば展開される
-BUILDBRAIN_RELEASE="$RELEASE" BUILDBRAIN_KERNEL_SHA256="$SHA" \
-    KERNEL_CACHE_DIR="$CACHE" KERNEL_DIR="$DEST" BRAIN_MODELS="sh3" \
-    "$REPO/scripts/fetch_kernel.sh" >/dev/null || fail "展開が失敗した"
+run >/dev/null || fail "展開が失敗した"
 [ -f "$DEST/zImage" ] || fail "zImage が展開されていない"
 [ -f "$DEST/imx28-pwsh3.dtb" ] || fail "DTB が展開されていない"
 # `[ ... ] && fail` は条件が偽のときリスト全体が非ゼロを返し、set -e でその場で
@@ -36,19 +41,8 @@ if [ -d "$DEST/release" ]; then fail "release/ が剥がされていない"; fi
 
 # 2. sha256 が一致しなければ非ゼロで終わる
 rm -rf "$DEST"
-if BUILDBRAIN_RELEASE="$RELEASE" BUILDBRAIN_KERNEL_SHA256="0000000000000000000000000000000000000000000000000000000000000000" \
-        KERNEL_CACHE_DIR="$CACHE" KERNEL_DIR="$DEST" BRAIN_MODELS="sh3" \
-        "$REPO/scripts/fetch_kernel.sh" >/dev/null 2>&1; then
-    fail "sha256 不一致なのに成功してしまった"
-fi
+echo "0000000000000000000000000000000000000000000000000000000000000000  brain256-kernel-${VER}.zip" > "$SUMS"
+if run >/dev/null 2>&1; then fail "sha256 不一致なのに成功してしまった"; fi
 if [ -f "$DEST/zImage" ]; then fail "検証に失敗したのに展開してしまった"; fi
-
-# 3. 非対応モデルは非ゼロで終わる
-rm -rf "$DEST"
-if BUILDBRAIN_RELEASE="$RELEASE" BUILDBRAIN_KERNEL_SHA256="$SHA" \
-        KERNEL_CACHE_DIR="$CACHE" KERNEL_DIR="$DEST" BRAIN_MODELS="sh3 a7200" \
-        "$REPO/scripts/fetch_kernel.sh" >/dev/null 2>&1; then
-    fail "a7200 を指定したのに成功してしまった"
-fi
 
 echo "PASS: test_fetch_kernel.sh"

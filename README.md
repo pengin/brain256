@@ -37,7 +37,7 @@ brain256
 - `rsync` は `scripts/ct.sh build` / `shell` でバンドルを作る場合に必要です。SD イメージの通しビルドだけなら、Docker コンテナ内の `rsync` を使うため、ホスト側へ個別にインストールする必要はありません。
 - **Go 1.24 以降**は、`registry/` をビルドする場合だけ必要です。
 - `kpartx`、`losetup`、`sfdisk`、`mkfs`、`mount` など、rootfs と SD イメージの作成に使う低レベルツールは Docker コンテナ内に入っています。ホストへ個別に用意する必要はありません。
-- 他のリポジトリを複製する必要はありません。カーネル・U-Boot・BrainLILO は、[buildbrain](https://github.com/brain-hackers/buildbrain) と [brainlilo](https://github.com/brain-hackers/brainlilo) が公開しているビルド済みの配布物を `make fetch-kernel` / `make fetch-boot` で取得します（合計 10MB 程度）。
+- 他のリポジトリを複製する必要はありません。U-Boot と BrainLILO は [buildbrain](https://github.com/brain-hackers/buildbrain) と [brainlilo](https://github.com/brain-hackers/brainlilo) が、カーネルは本リポジトリが公開しているビルド済みの配布物を、`make fetch-kernel` / `make fetch-boot` で取得します（合計 10MB 程度）。
 
 ### その他（ネットワーク・ハードウェア）
 
@@ -54,7 +54,7 @@ brain256
 
 ### 1. 起動用のバイナリを取得する（初回のみ）
 
-カーネル、U-Boot、BrainLILO はいずれもビルドしません。Brainux の開発元が公開しているビルド済みの配布物を取得して使います。SD の boot パーティションに置くものは、これまで Brainux が使ってきた資産そのものです。
+カーネル、U-Boot、BrainLILO はいずれもビルドしません。ビルド済みの配布物を取得して使います。U-Boot と BrainLILO は Brainux の開発元が公開しているものを、カーネルは本リポジトリがビルドして公開しているものを使います。
 
 ```sh
 make fetch-kernel
@@ -63,13 +63,17 @@ make fetch-boot
 
 `fetch-kernel` はカーネルと DTB を、`fetch-boot` は U-Boot と BrainLILO を取得します。どちらも `profiles/imx28/artifacts.sha256` に記録した sha256 と照合します。合計で 10MB 程度です。
 
+> **カーネルについて**
+>
+> カーネルは本リポジトリが [pengin/linux-brain](https://github.com/pengin/linux-brain) の `5ccf14be66a6` からビルドして公開しているものです（GPL-2.0、[NOTICE.md](NOTICE.md) 参照）。上流 buildbrain のリリースを使わないのは、そちらにコンテナ基盤に必要な `CONFIG_OVERLAY_FS` などが入っておらず、`brainwrt-ct` が動かないためです。usb0 を dual-role にする DTS 変更も含みます。
+
 > **ハッシュについて**
 >
 > buildbrain と brainlilo は OpenWrt と違って `sha256sums` を公開していません。`artifacts.sha256` の値は本リポジトリで実測したものです。上流の署名による保証ではなく、配布物が後から差し替えられた場合に検出するためのものです。
 
 > **対応機種について**
 >
-> この手順が対応するのは PW-SH1 から PW-SH7 です。PW-A7200 / A7400 は、配布物に DTB が含まれないため扱いません。[buildbrain](https://github.com/brain-hackers/buildbrain) でカーネルから自前ビルドすれば作れる可能性はありますが、本リポジトリでは扱いません。
+> `BRAIN_MODELS` に指定できるのは `sh1` から `sh7`、`a7200`、`a7400` です。ただし**実機で動作を確認しているのは PW-SH3 のみ**で、他は未検証です。PW-A7200 / A7400 は usb0 が host のままなので、`brainwrt-usb-mode` によるロール切り替えは使えません（検証できる実機がないため据え置いています）。
 
 ### 2. brain256 のビルダーと OpenWrt ImageBuilder を用意する
 
@@ -112,7 +116,7 @@ make docker-build fetch-kernel fetch-boot fetch-ib docker-rootfs-ib docker-image
 |---|---|
 | `cache/openwrt-imagebuilder-*.tar.zst` | 固定した OpenWrt ImageBuilder のキャッシュ |
 | `output/rootfs-imx28.tar` | Brain 用の overlay を適用した rootfs |
-| `cache/kernel/{zImage,imx28-pwsh*.dtb}` | 取得したカーネルと DTB |
+| `cache/kernel/{zImage,imx28-pw*.dtb,config}` | 取得したカーネル・DTB・ビルド設定 |
 | `cache/boot/{nk,loader,lilo}` | 取得した U-Boot と BrainLILO |
 | `output/dtb/imx28-pw*.dtb` | usb0 を dual-role にするパッチを当てた DTB |
 | `output/sd_wrt.img` | boot / rootfs / data の 3 パーティションを持つ SD イメージ |
@@ -122,7 +126,7 @@ make docker-build fetch-kernel fetch-boot fetch-ib docker-rootfs-ib docker-image
 OpenWrt のバージョンは `Makefile` の `OPENWRT_VERSION`（既定 24.10.7）で固定しています。対象モデルは `BRAIN_MODELS`（既定 `sh3`）で選びます。
 
 ```sh
-make docker-image BRAIN_MODELS="sh1 sh2 sh3 sh4 sh5 sh6 sh7"
+make docker-image BRAIN_MODELS="sh1 sh2 sh3 sh4 sh5 sh6 sh7 a7200 a7400"
 ```
 
 ドナーイメージから rootfs を取り出す経路（本 3.1）を使う場合は、`make fetch` と `make docker-rootfs` に読み替えてください。
@@ -169,4 +173,4 @@ cd registry && go test ./...
 ライセンス
 ----------
 
-MIT（[LICENSE](LICENSE)）。ただし `scripts/build_image.sh` は buildbrain からの派生で、ビルド時に OpenWrt や linux-brain のバイナリを取得します。内訳は [NOTICE.md](NOTICE.md) を参照してください。
+MIT（[LICENSE](LICENSE)）。ただし `scripts/build_image.sh` は buildbrain からの派生で、ビルド時に OpenWrt・U-Boot・BrainLILO のバイナリを取得します。本リポジトリが配布するカーネルは GPL-2.0 です。内訳は [NOTICE.md](NOTICE.md) を参照してください。
