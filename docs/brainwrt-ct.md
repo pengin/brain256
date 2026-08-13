@@ -288,6 +288,8 @@ brainwrt-ct pull webcam v2
   ```
 
   有効化してから拡張が終わるまでに、再起動が 2 回起きます。1 回目は上のコマンドで自分が行うもの、2 回目はサービスが MBR を書き換えた直後に自分で行うものです。2 回目の起動で `resize2fs` が走ります。完了後は `/etc/brainwrt-data-grow.state` が `done` になり、以降は何もしません。経過は `logread | grep brainwrt-data-grow` で追えます。
+
+  `resize2fs` は ImageBuilder 経路（`make docker-rootfs-ib`）の rootfs にあらかじめ入れてあります。OpenWrt は `e2fsprogs` のバイナリを個別のパッケージに分けており、`e2fsprogs` 本体には `resize2fs` が入らないため、`profiles/imx28/packages.txt` に `resize2fs` を別途書いています。donor 経路（`make docker-rootfs`）では代わりに `usr/share/brainwrt-data-grow/` へ同梱した ipk をオフラインで導入します。
 - 実 SD カードへの書き込みと、実機起動を含む最終確認は未実施です。
 
 cgroup、procfs、sysfs の仮想ファイルは、内容があっても `stat` 上のサイズが 0 になることがあります。状態判定に `[ -s file ]` を使わず、内容を読み取って判定してください。

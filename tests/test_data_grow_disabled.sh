@@ -50,4 +50,11 @@ if echo "$list" | grep -q 'etc/rc.d/S[0-9]*brainwrt-data-grow$'; then
     fail "rootfs で brainwrt-data-grow が有効になっている"
 fi
 
+# 5. 有効化したときに実際に完走できること。
+#    パーティションを広げても resize2fs が無ければファイルシステムは広がらず、
+#    「驚く再起動が起きたのに容量は増えない」で終わる。OpenWrt では resize2fs は
+#    e2fsprogs とは別のパッケージなので、packages.txt に別途書く必要がある。
+tar -tf "$TAR" | grep -q 'usr/sbin/resize2fs$' \
+    || fail "rootfs に resize2fs が入っていない（有効化しても拡張が完走しない）"
+
 echo "PASS: test_data_grow_disabled.sh"

@@ -10,9 +10,13 @@
 #
 # fdisk/sfdisk は使わない。p3 は末尾のパーティションなので、MBR のセクタ数
 # フィールド（オフセット 490、4 バイト、リトルエンディアン）だけを直接
-# 書き換えれば足りる。resize2fs は usr/share/brainwrt-data-grow/ に同梱した
-# e2fsprogs 一式をオフラインで opkg install して用意する（その ipk を集めるのが
-# scripts/fetch_data_grow_ipks.sh）。
+# 書き換えれば足りる。
+#
+# resize2fs の入手経路は rootfs の作り方で異なる。ImageBuilder 経路では
+# packages.txt に resize2fs を書いてあるので最初から入っている。donor 経路では
+# usr/share/brainwrt-data-grow/ に同梱した ipk をオフラインで opkg install する
+#（その ipk を集めるのが scripts/fetch_data_grow_ipks.sh）。下の ensure_resize2fs
+# は前者を先に見て、無ければ後者へ回る。
 #
 # brainwrt-data（mount、START=10）より前に完了させる必要がある。
 START=9
