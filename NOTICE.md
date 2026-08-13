@@ -49,3 +49,17 @@
 - **BrainLILO** — `make fetch-boot` が brain-hackers/brainlilo のリリース（`brainlilo-4.1.0.zip`、MIT）から取得します。SD の `アプリ/Launch Linux/` に置かれます。
 - **`exeopener.exe.gz`** — `make fetch-boot` が brain-hackers/buildbrain（MIT）から取得します。BrainLILO を起動するためのランチャで、SD の `アプリ/Launch Linux/AppMain.exe` になります。
 - **`bundles/webcam` が `opkg install` するパッケージ** — `fswebcam`、`uhttpd`、`libgd`、`libjpeg`、`libwebp`、`zlib` ほか。各パッケージのライセンスに従います。
+
+## 5. 配布するビルド済み SD イメージについて
+
+本リポジトリのリリースでは、上記をすべて含んだ SD イメージ（`brain256-sd-<version>.zip`）を配布しています。§4 は「ビルドすると取得される」ものの一覧ですが、このイメージについては本リポジトリ自身が再配布者となるため、対応するソースの所在を以下に示します。
+
+| 含まれるもの | ライセンス | 対応するソース |
+|---|---|---|
+| Linux カーネル（`zImage`）と DTB | GPL-2.0 | [pengin/linux-brain](https://github.com/pengin/linux-brain) の `5ccf14be66a6549f9b779b3f8c38dd9160a7d388`（タグ `brain256-kernel-6.1.70-1`）。ビルド設定はカーネルリリース zip 同梱の `config`、手順は `scripts/build_kernel.sh` |
+| U-Boot（`loader/gen3_*.bin`、`nk/eds*exe.bin`） | GPL-2.0 | [brain-hackers/u-boot-brain](https://github.com/brain-hackers/u-boot-brain) の `e8fc0d0cf39d9cd06245ef1777d1cf54258e5cb6`。buildbrain のリリース `2026-03-25-024518`（buildbrain の `3fb1dea6f15ac35023a285814c0e161b17e77f3d` からビルド）が固定していた版です |
+| OpenWrt 24.10.7 のユーザーランド | GPL-2.0 ほか、各パッケージのライセンス | <https://downloads.openwrt.org/releases/24.10.7/> の `targets/mxs/generic/` と `packages/arm_arm926ej-s/`。バイナリは上流が配布するものをそのまま使っており、改変していません |
+| BrainLILO、exeopener | MIT（Copyright (c) Takumi Sueda ほか） | [brain-hackers/brainlilo](https://github.com/brain-hackers/brainlilo) の `2ec8f7827e40ec8dfe6b7f5b0200e1effaf1b855`、および [brain-hackers/buildbrain](https://github.com/brain-hackers/buildbrain) |
+| RTL8192CU 用ファームウェア | 再配布可能なバイナリブロブ | OpenWrt の `rtl8192cu-firmware` パッケージに同梱のもの |
+
+イメージの再配布は妨げませんが、その場合は上記の各ライセンスに従ってください。特に GPL-2.0 のものは、対応するソースの入手方法を受け取った人へ示す必要があります。
