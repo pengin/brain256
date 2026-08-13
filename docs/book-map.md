@@ -25,7 +25,7 @@
 | 節 | ファイル |
 |---|---|
 | 5.1 rootfs は小さいままがいい | コンテナを使う理由の説明。対応するコードは 5.2 以降 |
-| 5.2 コンテナ基盤は意外とシンプル | `profiles/imx28/overlay/usr/sbin/brainwrt-ct`, `docs/brainwrt-ct.md`。p3 を追加する説明もここです。関連ファイルは `scripts/build_image.sh`（p2 を 160MB に固定して残りを p3 へ）、`profiles/imx28/overlay/etc/init.d/brainwrt-data`（p3 を `/data` へマウント）、`profiles/imx28/overlay/etc/init.d/brainwrt-data-grow`（初回起動時に p3 を拡張する、本文では「割愛」と明記されている実装）です |
+| 5.2 コンテナ基盤は意外とシンプル | `profiles/imx28/overlay/usr/sbin/brainwrt-ct`, `docs/brainwrt-ct.md`。p3 を追加する説明もここです。関連ファイルは `scripts/build_image.sh`（p2 を 160MB に固定して残りを p3 へ）、`profiles/imx28/overlay/etc/init.d/brainwrt-data`（p3 を `/data` へマウント）、`profiles/imx28/overlay/etc/init.d/brainwrt-data-grow`（p3 を実カード容量まで拡張する、本文では「割愛」と明記されている実装。自分で再起動するため既定では無効）です |
 | 5.3 バンドルを作ろう | `bundles/webcam/Dockerfile`, `scripts/ct.sh`, `scripts/build_bundle.sh` |
 | 5.4 バンドルを動かそう！ | `bundles/webcam/manifest.conf`, `bundles/webcam/root/usr/bin/webcam-run`, `profiles/imx28/overlay/etc/init.d/brainwrt-ct` |
 | 5.5 バンドルの置き場を作る | `registry/`, `scripts/registry.sh`, `brainwrt-ct pull` |
