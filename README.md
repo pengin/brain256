@@ -131,6 +131,50 @@ make docker-image BRAIN_MODELS="sh1 sh2 sh3 sh4 sh5 sh6 sh7 a7200 a7400"
 
 ドナーイメージから rootfs を取り出す経路（本 3.1）を使う場合は、`make fetch` と `make docker-rootfs` に読み替えてください。
 
+USB を切り替えて使う
+--------------------
+
+Brain の USB ポートは 1 つだけです。このポートは、周辺機器をつなぐ **host role** と、ホスト PC から見て Brain 自身が USB 機器になる **device role** のどちらか一方でしか動きません。
+
+i.MX28 の USB コントローラ（ci_hdrc）は、OTG アダプターの ID ピンから役割を自動判定する仕組みを持っていません。そのため読者が明示的に切り替えます。本リポジトリが配布するカーネルは、この切り替えのために usb0 を `dr_mode = "otg"` かつ `usb-role-switch` として宣言しています。
+
+### 起動直後（device role）
+
+Brain が起動すると `/etc/init.d/brainwrt-gadget` が NCM Ethernet gadget を UDC に結びつけます。Brain はホスト PC から USB Ethernet 機器として見えるので、ケーブル 1 本で SSH できます。
+
+ホスト PC 側では、増えたネットワークインターフェースに固定 IP を割り当ててください。インターフェース名は環境によって変わるので、Brain を接続する前後で一覧を見比べて確認します。
+
+```sh
+# ホスト PC 側（macOS の例。en5 の部分は環境で変わります）
+sudo ifconfig en5 192.168.28.1 netmask 255.255.255.0 up
+ssh root@192.168.28.2
+```
+
+Brain 側の IP は `profiles/imx28/overlay/etc/config/network` で `192.168.28.2` に固定しています。
+
+### 役割を切り替える
+
+実機で `brainwrt-usb-mode` を実行します。
+
+```sh
+brainwrt-usb-mode host      # USB ハブ・キーボード・USB-Ethernet・WLAN を使う
+brainwrt-usb-mode device    # NCM Ethernet gadget に戻す（SSH 192.168.28.2）
+```
+
+`host` を指定すると、このコマンドは role を切り替えたあと、ハブの先に USB-Ethernet アダプターが現れるのを最大 10 秒待ちます。見つかれば `udhcpc` で DHCP を実行するので、有線 LAN がそのまま使えます。現れなければその旨を表示して終わります。
+
+`device` を指定すると、このコマンドは role を戻し、NCM gadget を UDC に結びつけ直します。
+
+どちらの場合も、コマンドは最後に現在の role を表示して終わります。
+
+> **注意**
+>
+> Brain の USB ポートは電源を供給しません。host role で周辺機器を使うには、電源供給機能付きの OTG ハブが必要です。
+>
+> 2 つの役割は同時には使えません。`brainwrt-usb-mode host` を実行すると USB Ethernet が消えるため、**SSH 接続は切れます**。切り替えは本体のキーボードから実行してください。
+>
+> PW-A7200 / A7400 は usb0 が host のままなので、この切り替えは使えません（検証できる実機がないため据え置いています）。
+
 コンテナバンドルを作って配布する
 --------------------------------
 
