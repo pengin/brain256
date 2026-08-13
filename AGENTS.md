@@ -28,8 +28,9 @@ soft-float / 128MB RAM / SD ブート）向けに、OpenWrt ベースの最小 L
 - rootfs のツリーは Linux ファイルシステム上に置くこと。macOS では Docker の
   named volume（`brainwrt-rootfs`）を使う。APFS の bind mount はデバイス
   ノードと setuid ビットを黙って壊す。
-- カーネル、U-Boot、BrainLILO / boot4u は隣の `buildbrain` リポジトリ
-  （既定 `../buildbrain`）のもの。借りるだけで、変更しない。
+- カーネル、U-Boot、BrainLILO は brain-hackers が公開しているビルド済みの
+  配布物を `make fetch-kernel` / `make fetch-boot` で取得する。ソースからは
+  ビルドしない。期待ハッシュは `profiles/imx28/artifacts.sha256`。
 - 対象モデルは `Makefile` の `BRAIN_MODELS`（既定 `sh3`。手元の実機が
   PW-SH3 のみのため）。
 

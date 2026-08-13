@@ -1,0 +1,22 @@
+# カーネルをビルドするためのメンテナ専用イメージ。
+# 読者はカーネルをビルドしないため、読者用の Dockerfile(brainwrt-builder)には
+# クロスツールチェーンを入れない。
+FROM ubuntu:24.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc-arm-linux-gnueabi \
+        bc \
+        bison \
+        flex \
+        libssl-dev \
+        libncurses-dev \
+        device-tree-compiler \
+        kmod \
+        git \
+        ca-certificates \
+        python3 \
+        zip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work

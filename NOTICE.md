@@ -16,7 +16,7 @@
 
 派生元の著作権表示はファイル冒頭に保持しています。
 
-なお、カーネル（linux-brain の `zImage`）、U-Boot、BrainLILO / boot4u、`nkbin_maker` は buildbrain 側でビルドするもので、このリポジトリには含まれません（§4 参照）。
+なお、カーネル（linux-brain の `zImage`）、U-Boot、BrainLILO はいずれもビルド済みの配布物を取得して使うもので、このリポジトリには含まれません（§4 参照）。
 
 ## 3. OpenWrt のファイルを置き換える / 呼び出すもの
 
@@ -33,5 +33,19 @@
 これらはリポジトリには含まれず、ビルド時に取得または生成されます。再配布する場合は、それぞれのライセンスに従ってください。
 
 - **OpenWrt 24.10.7** — `make fetch` / `make fetch-ib` が `downloads.openwrt.org` から取得します。生成される `output/rootfs-imx28.tar`、SD イメージ、`bundles/webcam/root/usr/lib/*.so` はこれに由来します。GPL-2.0 など、OpenWrt の各パッケージのライセンスに従います。
-- **linux-brain のカーネル（`zImage`）、U-Boot、BrainLILO / boot4u** — 隣接する `buildbrain` 側でビルドします。カーネルには GPL-2.0 が適用されます。
+- **linux-brain のカーネル（`zImage`）とモデルごとの DTB** — `make fetch-kernel` が
+  `pengin/brain256` のリリース（`brain256-kernel-<version>.zip`）から取得します。これは
+  本リポジトリが linux-brain をビルドしたものです。
+  - ライセンス: **GPL-2.0**
+  - 対応するソース: [pengin/linux-brain](https://github.com/pengin/linux-brain) の
+    `5ccf14be66a6549f9b779b3f8c38dd9160a7d388`（タグ `brain256-kernel-6.1.70-1`）。
+    brain-hackers/linux-brain の fork で、本リポジトリ作者の 5 コミットを重ねたものです。
+  - ビルド設定: リリース zip に同梱の `config`
+  - ビルド手順: 本リポジトリの `scripts/build_kernel.sh` と `Dockerfile.kernel`
+    （`make kernel-release`）
+  - 上流 buildbrain のリリースを使わない理由: そちらにはコンテナ基盤に必要な
+    `CONFIG_OVERLAY_FS` などが入っておらず、`brainwrt-ct` が動かないためです。
+- **モデルごとの U-Boot と `nk.bin`** — `make fetch-boot` が brain-hackers/buildbrain のリリース（`uboot-<model>-<release>.zip`、MIT）から取得します。SD の `loader/` と `nk/` に置かれます。U-Boot 本体には GPL-2.0 が適用されます。
+- **BrainLILO** — `make fetch-boot` が brain-hackers/brainlilo のリリース（`brainlilo-4.1.0.zip`、MIT）から取得します。SD の `アプリ/Launch Linux/` に置かれます。
+- **`exeopener.exe.gz`** — `make fetch-boot` が brain-hackers/buildbrain（MIT）から取得します。BrainLILO を起動するためのランチャで、SD の `アプリ/Launch Linux/AppMain.exe` になります。
 - **`bundles/webcam` が `opkg install` するパッケージ** — `fswebcam`、`uhttpd`、`libgd`、`libjpeg`、`libwebp`、`zlib` ほか。各パッケージのライセンスに従います。

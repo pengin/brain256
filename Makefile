@@ -1,10 +1,16 @@
 DOCKER_IMAGE=brainwrt-builder
 ROOTFS_VOLUME=brainwrt-rootfs
 PROFILE?=imx28
-# buildbrain のビルダーイメージには build_image.sh が必要とする ARM
-# クロスツールチェーンが入っている（モデルごとの U-Boot バイナリを再ビルドする）。
-BUILDBRAIN_DOCKER_IMAGE=buildbrain-builder:local
-BUILDBRAIN?=../buildbrain
+# U-Boot と BrainLILO を取る buildbrain のリリース。
+BUILDBRAIN_RELEASE?=2026-03-25-024518
+export BUILDBRAIN_RELEASE
+# カーネルは本リポジトリ自身がビルドして配布する。上流のリリースには
+# コンテナ基盤に必要な設定が入っておらず brainwrt-ct が動かないため。
+KERNEL_RELEASE?=kernel-6.1.70-1
+export KERNEL_RELEASE
+# docker-dtb は $$PWD を /work へ mount するので cache/ は /work/cache で見える。
+# 別の場所の DTB を使う場合は DTB_SRC_DIR を /work 配下のパスで上書きする。
+DTB_SRC_DIR?=/work/cache/kernel
 # p1=boot(64M)+p2=rootfs(ROOTFS_PART_M、build_image.sh の既定は 160M)+
 # p3=data(残り全部)。実機に fdisk 相当のツールがないため、初回ブートでは
 # brainwrt-data-grow が MBR を直接書き換え、p3 を実カード容量まで拡張する。
@@ -25,9 +31,32 @@ fetch:
 fetch-ib:
 	./scripts/fetch_imagebuilder.sh
 
+.PHONY: fetch-kernel
+fetch-kernel:
+	BRAIN_MODELS="$(BRAIN_MODELS)" ./scripts/fetch_kernel.sh $(PROFILE)
+
+.PHONY: fetch-boot
+fetch-boot:
+	BRAIN_MODELS="$(BRAIN_MODELS)" ./scripts/fetch_boot.sh $(PROFILE)
+
 .PHONY: docker-build
 docker-build:
 	docker build --platform linux/amd64 -t $(DOCKER_IMAGE) -f Dockerfile .
+
+# ここから下はメンテナ専用。読者は実行しない（カーネルは fetch-kernel で取得する）。
+KERNEL_DOCKER_IMAGE=brainwrt-kernel-builder
+KERNEL_VERSION?=6.1.70-1
+
+.PHONY: kernel-builder
+kernel-builder:
+	docker build --platform linux/amd64 -t $(KERNEL_DOCKER_IMAGE) -f Dockerfile.kernel .
+
+.PHONY: kernel-release
+kernel-release: kernel-builder
+	docker run --rm --platform linux/amd64 \
+		-e KERNEL_VERSION="$(KERNEL_VERSION)" \
+		-v "$$PWD":/work -w /work $(KERNEL_DOCKER_IMAGE) \
+		bash -lc "./scripts/build_kernel.sh"
 
 # donor SD イメージから rootfs パーティションを取り出し、OpenWrt のカーネル
 # モジュールを削除する（実際には linux-brain のカーネルを使うため）。profile の
@@ -55,10 +84,25 @@ docker-rootfs-ib: docker-volume-rm docker-volume-create docker-loop-clean
 		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
 		bash -lc "./scripts/build_rootfs_imagebuilder.sh $(PROFILE)"
 
-# buildbrain のビルダーイメージを再利用する。build_image.sh が rootfs ディレクトリを
-# 探す場所へ rootfs tarball を展開し、Brainux と同じ手順で（モデルごとの U-Boot、
-# nk.bin、パーティション分割）SD イメージを組み立てる。
-# カーネルは buildbrain ツリー内の linux-brain から取得する（3.2 参照）。
+# fetch-kernel が取得した DTB へ profiles/$(PROFILE)/dtb-patch.conf の内容を
+# 適用し、output/dtb/ へ書き出す。取得元の DTB は書き換えない。
+.PHONY: docker-dtb
+docker-dtb:
+	docker run --rm --platform linux/amd64 \
+		-e BRAIN_MODELS="$(BRAIN_MODELS)" \
+		-e DTB_SRC_DIR="$(DTB_SRC_DIR)" \
+		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
+		bash -lc "./scripts/patch_dtb.sh $(PROFILE)"
+
+.PHONY: docker-test-dtb
+docker-test-dtb:
+	docker run --rm --platform linux/amd64 \
+		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
+		bash -lc "sh tests/test_patch_dtb.sh"
+
+# rootfs tarball を output/work/rootfs へ展開し、fetch-kernel と fetch-boot が
+# 取得したカーネル・U-Boot・BrainLILO と組み合わせて SD イメージを作る。
+# コンパイルは一切行わないので、自前の brainwrt-builder で完結する。
 # SD イメージは output/rootfs-$(PROFILE).tar を焼き込む。overlay を直した後に
 # rootfs を組み直さず docker-image を回すと、古い rootfs のイメージが黙って
 # 出来上がる（実際にやった）。profiles/ のほうが新しければ止める。
@@ -76,16 +120,13 @@ check-rootfs-fresh:
 	fi
 
 .PHONY: docker-image
-docker-image: check-rootfs-fresh docker-loop-clean
+docker-image: check-rootfs-fresh docker-dtb docker-loop-clean
 	docker run --rm --platform linux/amd64 --privileged \
 		-e BRAIN_MODELS="$(BRAIN_MODELS)" \
-		-v "$$PWD/output":/brainwrt-output \
-		-v "$$PWD/scripts":/brainwrt-scripts \
-		-v "$$(cd $(BUILDBRAIN) && pwd)":/work -w /work $(BUILDBRAIN_DOCKER_IMAGE) \
-		bash -lc "rm -rf brainwrt-rootfs && mkdir brainwrt-rootfs && \
-			tar -xpf /brainwrt-output/rootfs-$(PROFILE).tar -C brainwrt-rootfs && \
-			make -C nkbin_maker clean all && \
-			IMG_BUILD_JOBS=1 /brainwrt-scripts/build_image.sh brainwrt-rootfs sd_wrt.img $(IMG_SIZE_M)"
+		-v "$$PWD":/work -w /work $(DOCKER_IMAGE) \
+		bash -lc "rm -rf output/work/rootfs && mkdir -p output/work/rootfs && \
+			tar -xpf output/rootfs-$(PROFILE).tar -C output/work/rootfs && \
+			./scripts/build_image.sh output/work/rootfs sd_wrt.img $(IMG_SIZE_M)"
 
 # loop device は Docker Desktop VM 全体で共有される。kpartx を使うコンテナが
 # detach 前に終了すると残り、古い loop が 8 個あるだけで後続のイメージビルドが
